@@ -2,11 +2,12 @@ import Map "mo:core/Map";
 import Array "mo:core/Array";
 import Text "mo:core/Text";
 import Time "mo:core/Time";
-import List "mo:core/List";
 import Runtime "mo:core/Runtime";
-import Iter "mo:core/Iter";
 import Order "mo:core/Order";
 import Nat "mo:core/Nat";
+import Float "mo:core/Float";
+
+
 
 actor {
   // TASKS
@@ -227,5 +228,283 @@ actor {
 
   public query ({ caller }) func getAllNotes() : async [Note] {
     notes.values().toArray().sort();
+  };
+
+  // WORK ENTRIES
+
+  type WorkEntryId = Nat;
+  var nextWorkEntryId = 0;
+
+  type WorkEntry = {
+    id : WorkEntryId;
+    workerName : Text;
+    date : Text; // YYYY-MM-DD format
+    workType : Text;
+    startTime : Nat; // Minutes since midnight
+    endTime : Nat; // Minutes since midnight
+    hoursWorked : Float;
+    dailyPayment : Float;
+    notes : Text;
+    createdAt : Time.Time;
+  };
+
+  module WorkEntry {
+    public func compare(entry1 : WorkEntry, entry2 : WorkEntry) : Order.Order {
+      Nat.compare(entry1.id, entry2.id);
+    };
+  };
+
+  let workEntries = Map.empty<WorkEntryId, WorkEntry>();
+
+  public shared ({ caller }) func createWorkEntry(workerName : Text, date : Text, workType : Text, startTime : Nat, endTime : Nat, hoursWorked : Float, dailyPayment : Float, notes : Text) : async WorkEntryId {
+    let entryId = nextWorkEntryId;
+    let entry : WorkEntry = {
+      id = entryId;
+      workerName;
+      date;
+      workType;
+      startTime;
+      endTime;
+      hoursWorked;
+      dailyPayment;
+      notes;
+      createdAt = Time.now();
+    };
+    workEntries.add(entryId, entry);
+    nextWorkEntryId += 1;
+    entryId;
+  };
+
+  public shared ({ caller }) func updateWorkEntry(entryId : WorkEntryId, workerName : Text, date : Text, workType : Text, startTime : Nat, endTime : Nat, hoursWorked : Float, dailyPayment : Float, notes : Text) : async () {
+    switch (workEntries.get(entryId)) {
+      case (null) { Runtime.trap("Work entry not found") };
+      case (?existingEntry) {
+        let updatedEntry : WorkEntry = {
+          id = entryId;
+          workerName;
+          date;
+          workType;
+          startTime;
+          endTime;
+          hoursWorked;
+          dailyPayment;
+          notes;
+          createdAt = existingEntry.createdAt;
+        };
+        workEntries.add(entryId, updatedEntry);
+      };
+    };
+  };
+
+  public shared ({ caller }) func deleteWorkEntry(entryId : WorkEntryId) : async () {
+    if (not workEntries.containsKey(entryId)) { Runtime.trap("Work entry not found") };
+    workEntries.remove(entryId);
+  };
+
+  public query ({ caller }) func getWorkEntry(entryId : WorkEntryId) : async WorkEntry {
+    switch (workEntries.get(entryId)) {
+      case (null) { Runtime.trap("Work entry not found") };
+      case (?entry) { entry };
+    };
+  };
+
+  public query ({ caller }) func getAllWorkEntries() : async [WorkEntry] {
+    workEntries.values().toArray().sort();
+  };
+
+  public query ({ caller }) func getWorkEntriesByDate(date : Text) : async [WorkEntry] {
+    workEntries.values().toArray().filter(
+      func(entry) {
+        entry.date == date;
+      }
+    ).sort();
+  };
+
+  public query ({ caller }) func getWorkEntriesByWorker(workerName : Text) : async [WorkEntry] {
+    workEntries.values().toArray().filter(
+      func(entry) {
+        entry.workerName == workerName;
+      }
+    ).sort();
+  };
+
+  public query ({ caller }) func getWorkEntriesByDateRange(fromDate : Text, toDate : Text) : async [WorkEntry] {
+    workEntries.values().toArray().filter(
+      func(entry) {
+        entry.date >= fromDate and entry.date <= toDate;
+      }
+    ).sort();
+  };
+
+  // JOB BOARD
+
+  type JobPostingId = Nat;
+  var nextJobPostingId = 0;
+
+  type JobStatus = {
+    #available;
+    #taken;
+  };
+
+  type JobPosting = {
+    id : JobPostingId;
+    title : Text;
+    description : Text;
+    date : Text;
+    startTime : Int;
+    endTime : Int;
+    paymentAmount : Float;
+    address : Text;
+    status : JobStatus;
+    assignedWorkerName : Text;
+    createdAt : Time.Time;
+  };
+
+  let jobPostings = Map.empty<JobPostingId, JobPosting>();
+
+  public shared ({ caller }) func createJobPosting(title : Text, description : Text, date : Text, startTime : Int, endTime : Int, paymentAmount : Float, address : Text) : async JobPostingId {
+    let jobId = nextJobPostingId;
+    let job : JobPosting = {
+      id = jobId;
+      title;
+      description;
+      date;
+      startTime;
+      endTime;
+      paymentAmount;
+      address;
+      status = #available;
+      assignedWorkerName = "";
+      createdAt = Time.now();
+    };
+    jobPostings.add(jobId, job);
+    nextJobPostingId += 1;
+    jobId;
+  };
+
+  public query ({ caller }) func getAvailableJobPostings() : async [JobPosting] {
+    jobPostings.values().toArray().filter(
+      func(job) {
+        job.status == #available;
+      }
+    );
+  };
+
+  public query ({ caller }) func getAllJobPostings() : async [JobPosting] {
+    jobPostings.values().toArray();
+  };
+
+  public shared ({ caller }) func assignJobPosting(id : JobPostingId, workerName : Text) : async Bool {
+    switch (jobPostings.get(id)) {
+      case (null) { false };
+      case (?job) {
+        switch (job.status) {
+          case (#taken) { false };
+          case (#available) {
+            let updatedJob : JobPosting = {
+              id = job.id;
+              title = job.title;
+              description = job.description;
+              date = job.date;
+              startTime = job.startTime;
+              endTime = job.endTime;
+              paymentAmount = job.paymentAmount;
+              address = job.address;
+              status = #taken;
+              assignedWorkerName = workerName;
+              createdAt = job.createdAt;
+            };
+            jobPostings.add(id, updatedJob);
+            true;
+          };
+        };
+      };
+    };
+  };
+
+  public shared ({ caller }) func deleteJobPosting(id : JobPostingId) : async () {
+    if (not jobPostings.containsKey(id)) { Runtime.trap("Job posting not found") };
+    jobPostings.remove(id);
+  };
+
+  // NOTIFICATIONS
+
+  type NotificationId = Nat;
+  var nextNotificationId = 0;
+
+  type Notification = {
+    id : NotificationId;
+    title : Text;
+    message : Text;
+    notificationType : Text;
+    jobId : Nat;
+    timestamp : Time.Time;
+    isRead : Bool;
+  };
+
+  let notifications = Map.empty<NotificationId, Notification>();
+
+  public shared ({ caller }) func createNotification(title : Text, message : Text, notificationType : Text, jobId : Nat) : async NotificationId {
+    let notifId = nextNotificationId;
+    let notif : Notification = {
+      id = notifId;
+      title;
+      message;
+      notificationType;
+      jobId;
+      timestamp = Time.now();
+      isRead = false;
+    };
+    notifications.add(notifId, notif);
+    nextNotificationId += 1;
+    notifId;
+  };
+
+  public query ({ caller }) func getAllNotifications() : async [Notification] {
+    notifications.values().toArray().sort(func(a : Notification, b : Notification) : Order.Order {
+      Nat.compare(b.id, a.id);
+    });
+  };
+
+  public query ({ caller }) func getUnreadCount() : async Nat {
+    notifications.values().toArray().filter(func(n : Notification) : Bool { not n.isRead }).size();
+  };
+
+  public shared ({ caller }) func markNotificationRead(id : NotificationId) : async () {
+    switch (notifications.get(id)) {
+      case (null) { Runtime.trap("Notification not found") };
+      case (?n) {
+        let updated : Notification = {
+          id = n.id;
+          title = n.title;
+          message = n.message;
+          notificationType = n.notificationType;
+          jobId = n.jobId;
+          timestamp = n.timestamp;
+          isRead = true;
+        };
+        notifications.add(id, updated);
+      };
+    };
+  };
+
+  public shared ({ caller }) func markAllNotificationsRead() : async () {
+    for ((id, n) in notifications.entries()) {
+      let updated : Notification = {
+        id = n.id;
+        title = n.title;
+        message = n.message;
+        notificationType = n.notificationType;
+        jobId = n.jobId;
+        timestamp = n.timestamp;
+        isRead = true;
+      };
+      notifications.add(id, updated);
+    };
+  };
+
+  public shared ({ caller }) func deleteNotification(id : NotificationId) : async () {
+    if (not notifications.containsKey(id)) { Runtime.trap("Notification not found") };
+    notifications.remove(id);
   };
 };

@@ -17,6 +17,22 @@ export type DayOfWeek = { 'tuesday' : null } |
   { 'sunday' : null } |
   { 'friday' : null } |
   { 'monday' : null };
+export interface JobPosting {
+  'id' : JobPostingId,
+  'startTime' : bigint,
+  'status' : JobStatus,
+  'title' : string,
+  'endTime' : bigint,
+  'date' : string,
+  'createdAt' : Time,
+  'description' : string,
+  'address' : string,
+  'assignedWorkerName' : string,
+  'paymentAmount' : number,
+}
+export type JobPostingId = bigint;
+export type JobStatus = { 'taken' : null } |
+  { 'available' : null };
 export interface Note {
   'id' : NoteId,
   'title' : string,
@@ -46,22 +62,53 @@ export interface Task {
 }
 export type TaskId = bigint;
 export type Time = bigint;
+export interface WorkEntry {
+  'id' : WorkEntryId,
+  'startTime' : bigint,
+  'workType' : string,
+  'dailyPayment' : number,
+  'endTime' : bigint,
+  'date' : string,
+  'hoursWorked' : number,
+  'createdAt' : Time,
+  'notes' : string,
+  'workerName' : string,
+}
+export type WorkEntryId = bigint;
 export interface _SERVICE {
+  'assignJobPosting' : ActorMethod<[JobPostingId, string], boolean>,
+  'createJobPosting' : ActorMethod<
+    [string, string, string, bigint, bigint, number, string],
+    JobPostingId
+  >,
   'createNote' : ActorMethod<[string, string], NoteId>,
   'createScheduleEntry' : ActorMethod<
     [string, DayOfWeek, bigint, bigint, string],
     ScheduleId
   >,
   'createTask' : ActorMethod<[string, string, Priority, [] | [Time]], TaskId>,
+  'createWorkEntry' : ActorMethod<
+    [string, string, string, bigint, bigint, number, number, string],
+    WorkEntryId
+  >,
+  'deleteJobPosting' : ActorMethod<[JobPostingId], undefined>,
   'deleteNote' : ActorMethod<[NoteId], undefined>,
   'deleteScheduleEntry' : ActorMethod<[ScheduleId], undefined>,
   'deleteTask' : ActorMethod<[TaskId], undefined>,
+  'deleteWorkEntry' : ActorMethod<[WorkEntryId], undefined>,
+  'getAllJobPostings' : ActorMethod<[], Array<JobPosting>>,
   'getAllNotes' : ActorMethod<[], Array<Note>>,
   'getAllScheduleEntries' : ActorMethod<[], Array<ScheduleEntry>>,
   'getAllTasks' : ActorMethod<[], Array<Task>>,
+  'getAllWorkEntries' : ActorMethod<[], Array<WorkEntry>>,
+  'getAvailableJobPostings' : ActorMethod<[], Array<JobPosting>>,
   'getNote' : ActorMethod<[NoteId], Note>,
   'getScheduleEntry' : ActorMethod<[ScheduleId], ScheduleEntry>,
   'getTask' : ActorMethod<[TaskId], Task>,
+  'getWorkEntriesByDate' : ActorMethod<[string], Array<WorkEntry>>,
+  'getWorkEntriesByDateRange' : ActorMethod<[string, string], Array<WorkEntry>>,
+  'getWorkEntriesByWorker' : ActorMethod<[string], Array<WorkEntry>>,
+  'getWorkEntry' : ActorMethod<[WorkEntryId], WorkEntry>,
   'updateNote' : ActorMethod<[NoteId, string, string], undefined>,
   'updateScheduleEntry' : ActorMethod<
     [ScheduleId, string, DayOfWeek, bigint, bigint, string],
@@ -69,6 +116,20 @@ export interface _SERVICE {
   >,
   'updateTask' : ActorMethod<
     [TaskId, string, string, Priority, [] | [Time], boolean],
+    undefined
+  >,
+  'updateWorkEntry' : ActorMethod<
+    [
+      WorkEntryId,
+      string,
+      string,
+      string,
+      bigint,
+      bigint,
+      number,
+      number,
+      string,
+    ],
     undefined
   >,
 }

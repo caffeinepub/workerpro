@@ -4,8 +4,10 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock,
+  IndianRupee,
   ListTodo,
   TrendingUp,
+  Users,
 } from "lucide-react";
 import type { Variants } from "motion/react";
 import { motion } from "motion/react";
@@ -14,6 +16,7 @@ import {
   useGetAllNotes,
   useGetAllScheduleEntries,
   useGetAllTasks,
+  useGetWorkEntriesByDate,
 } from "../hooks/useQueries";
 
 const DAY_ORDER: DayOfWeek[] = [
@@ -91,6 +94,10 @@ export default function Dashboard() {
     useGetAllScheduleEntries();
   const { data: notes } = useGetAllNotes();
 
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const { data: todayWorkEntries, isLoading: workLoading } =
+    useGetWorkEntriesByDate(todayIso);
+
   const totalTasks = tasks?.length ?? 0;
   const completedTasks = tasks?.filter((t) => t.completed).length ?? 0;
   const pendingTasks = totalTasks - completedTasks;
@@ -117,6 +124,39 @@ export default function Dashboard() {
     pending: pendingTasks,
     shifts: todayEntries.length,
   };
+
+  // Today's work stats
+  const workEntries = todayWorkEntries ?? [];
+  const totalWorkersToday = new Set(workEntries.map((e) => e.workerName)).size;
+  const totalHoursToday = workEntries.reduce((s, e) => s + e.hoursWorked, 0);
+  const totalPaymentToday = workEntries.reduce((s, e) => s + e.dailyPayment, 0);
+
+  const WORK_STATS = [
+    {
+      label: "Total Workers Today",
+      value: totalWorkersToday,
+      icon: Users,
+      color: "text-primary",
+      bg: "bg-primary/10",
+      display: String(totalWorkersToday),
+    },
+    {
+      label: "Total Hours Today",
+      value: totalHoursToday,
+      icon: Clock,
+      color: "text-[oklch(0.76_0.16_75)]",
+      bg: "bg-[oklch(0.76_0.16_75/0.1)]",
+      display: `${totalHoursToday.toFixed(1)} hrs`,
+    },
+    {
+      label: "Total Payment Today",
+      value: totalPaymentToday,
+      icon: IndianRupee,
+      color: "text-[oklch(0.72_0.18_145)]",
+      bg: "bg-[oklch(0.72_0.18_145/0.1)]",
+      display: `₹${totalPaymentToday.toLocaleString("en-IN")}`,
+    },
+  ] as const;
 
   return (
     <div data-ocid="dashboard.section" className="p-6 md:p-8 max-w-5xl mx-auto">
@@ -147,6 +187,42 @@ export default function Dashboard() {
           <p className="text-muted-foreground mt-1">
             Here's your productivity overview for today.
           </p>
+        </motion.div>
+
+        {/* Today's Work Section */}
+        <motion.div variants={item}>
+          <h2 className="font-display font-600 text-foreground mb-3 flex items-center gap-2">
+            Today's Work
+            <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+              {new Date().toLocaleDateString("en-IN", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+              })}
+            </span>
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {WORK_STATS.map((s) => (
+              <div
+                key={s.label}
+                className="glass-card rounded-xl p-5 stat-glow flex flex-col gap-3"
+              >
+                <div
+                  className={`w-9 h-9 rounded-lg ${s.bg} flex items-center justify-center`}
+                >
+                  <s.icon className={`w-5 h-5 ${s.color}`} />
+                </div>
+                {workLoading ? (
+                  <Skeleton className="h-8 w-20" />
+                ) : (
+                  <span className={`text-2xl font-display font-700 ${s.color}`}>
+                    {s.display}
+                  </span>
+                )}
+                <span className="text-muted-foreground text-sm">{s.label}</span>
+              </div>
+            ))}
+          </div>
         </motion.div>
 
         {/* Stats Grid */}

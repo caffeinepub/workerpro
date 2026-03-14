@@ -1,27 +1,37 @@
 # WorkerPro
 
 ## Current State
-New project, no existing code.
+- Worker profiles stored in localStorage with name, phone, address, skill (Workers.tsx)
+- Job extras stored in localStorage: contactNumber, workerPhone, workerAddress, completionStatus
+- Assignment flow saves workerPhone and workerAddress when a registered worker is selected
+- Available Work cards currently display contactNumber (should be hidden per security requirement)
+- Assigned Work cards show worker name, phone, date, time, payment, address (no Call Worker button, no employer contact section, no worker skill)
 
 ## Requested Changes (Diff)
 
 ### Add
-- Task management: create, complete, delete tasks with priority levels (low/medium/high)
-- Work schedule planner: add and view shifts/events by day of the week
-- Priority to-do list: to-do items with priority tagging and completion tracking
-- Notes section: create, edit, delete free-form notes
-- Dashboard overview: summary stats (tasks completed, pending, upcoming shifts)
+- `workerSkill` and `workerId` fields to `JobExtra` interface and saved on assignment
+- "Call Worker" button on Assigned Work cards (tel: link using workerPhone)
+- "Call Employer" button on Assigned Work cards (tel: link using contactNumber saved at post time)
+- Employer contact section on Assigned Work cards (contact name, phone, work address) -- worker view
+- Worker skill displayed in Assigned Work cards -- contractor view
+- Work location (job.address) clearly labeled on Assigned Work cards
 
 ### Modify
-- N/A
+- Remove contactNumber display from Available Work job cards (security: no phone in public listings)
+- Remove contactNumber from View Details dialog in Available Work
+- Assigned Work cards: expand to show all required fields (title, worker name, phone, address, skill, date, time, payment, location)
+- Assignment confirm flow: save workerId and workerSkill in extras alongside existing fields
 
 ### Remove
-- N/A
+- Phone number visibility in public Available Work section
 
 ## Implementation Plan
-1. Backend: actors for Tasks, Schedule, Notes with CRUD operations
-2. Frontend: dashboard layout with sidebar navigation and four sections
-   - Dashboard (overview stats)
-   - Tasks (list + add form with priority)
-   - Schedule (weekly view + add shift form)
-   - Notes (grid of note cards + add/edit)
+1. Update `JobExtra` interface to add `workerSkill: string` and `workerId: string`
+2. Update `saveExtra` default values and `handleConfirm` to persist workerId + workerSkill
+3. Remove contactNumber display from AvailableWorkTab cards and View Details dialog
+4. Update AssignedWorkTab card layout:
+   - Show all fields: title, badge, worker name, phone, address, skill, date, time, payment, work location
+   - Add "Call Worker" button (tel:{workerPhone}) when phone is available
+   - Add employer section showing contactNumber with "Call Employer" button (tel:{contactNumber})
+5. Apply data-ocid markers to new buttons

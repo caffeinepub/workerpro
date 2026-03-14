@@ -5,11 +5,12 @@ import {
   Priority,
   type ScheduleEntry,
   type Task,
+  type WorkEntry,
 } from "../backend.d";
 import { useActor } from "./useActor";
 
 export { DayOfWeek, Priority };
-export type { Task, ScheduleEntry, Note };
+export type { Task, ScheduleEntry, Note, WorkEntry };
 
 export function useGetAllTasks() {
   const { actor, isFetching } = useActor();
@@ -202,5 +203,97 @@ export function useDeleteNote() {
       return actor.deleteNote(id);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notes"] }),
+  });
+}
+
+// ── Work Entry hooks ────────────────────────────────────────────────────────
+
+export function useGetAllWorkEntries() {
+  const { actor, isFetching } = useActor();
+  return useQuery<WorkEntry[]>({
+    queryKey: ["workEntries"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getAllWorkEntries();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useGetWorkEntriesByDate(date: string) {
+  const { actor, isFetching } = useActor();
+  return useQuery<WorkEntry[]>({
+    queryKey: ["workEntries", "date", date],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getWorkEntriesByDate(date);
+    },
+    enabled: !!actor && !isFetching && !!date,
+  });
+}
+
+export function useGetWorkEntriesByWorker(workerName: string) {
+  const { actor, isFetching } = useActor();
+  return useQuery<WorkEntry[]>({
+    queryKey: ["workEntries", "worker", workerName],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getWorkEntriesByWorker(workerName);
+    },
+    enabled: !!actor && !isFetching && !!workerName,
+  });
+}
+
+export function useGetWorkEntriesByDateRange(fromDate: string, toDate: string) {
+  const { actor, isFetching } = useActor();
+  return useQuery<WorkEntry[]>({
+    queryKey: ["workEntries", "range", fromDate, toDate],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getWorkEntriesByDateRange(fromDate, toDate);
+    },
+    enabled: !!actor && !isFetching && !!fromDate && !!toDate,
+  });
+}
+
+export function useCreateWorkEntry() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: {
+      workerName: string;
+      date: string;
+      workType: string;
+      startTime: bigint;
+      endTime: bigint;
+      hoursWorked: number;
+      dailyPayment: number;
+      notes: string;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.createWorkEntry(
+        vars.workerName,
+        vars.date,
+        vars.workType,
+        vars.startTime,
+        vars.endTime,
+        vars.hoursWorked,
+        vars.dailyPayment,
+        vars.notes,
+      );
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["workEntries"] }),
+  });
+}
+
+export function useDeleteWorkEntry() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("No actor");
+      return actor.deleteWorkEntry(id);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["workEntries"] }),
   });
 }
