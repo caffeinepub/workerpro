@@ -10,6 +10,7 @@ import { IDL } from '@icp-sdk/core/candid';
 
 export const JobPostingId = IDL.Nat;
 export const NoteId = IDL.Nat;
+export const NotificationId = IDL.Nat;
 export const DayOfWeek = IDL.Variant({
   'tuesday' : IDL.Null,
   'wednesday' : IDL.Null,
@@ -29,7 +30,9 @@ export const Time = IDL.Int;
 export const TaskId = IDL.Nat;
 export const WorkEntryId = IDL.Nat;
 export const JobStatus = IDL.Variant({
-  'taken' : IDL.Null,
+  'assigned' : IDL.Null,
+  'deleted' : IDL.Null,
+  'completed' : IDL.Null,
   'available' : IDL.Null,
 });
 export const JobPosting = IDL.Record({
@@ -42,6 +45,8 @@ export const JobPosting = IDL.Record({
   'createdAt' : Time,
   'description' : IDL.Text,
   'address' : IDL.Text,
+  'assignedWorkerAddress' : IDL.Text,
+  'assignedWorkerPhone' : IDL.Text,
   'assignedWorkerName' : IDL.Text,
   'paymentAmount' : IDL.Float64,
 });
@@ -49,6 +54,15 @@ export const Note = IDL.Record({
   'id' : NoteId,
   'title' : IDL.Text,
   'body' : IDL.Text,
+  'timestamp' : Time,
+});
+export const Notification = IDL.Record({
+  'id' : NotificationId,
+  'title' : IDL.Text,
+  'notificationType' : IDL.Text,
+  'jobId' : IDL.Nat,
+  'isRead' : IDL.Bool,
+  'message' : IDL.Text,
   'timestamp' : Time,
 });
 export const ScheduleEntry = IDL.Record({
@@ -81,13 +95,23 @@ export const WorkEntry = IDL.Record({
 });
 
 export const idlService = IDL.Service({
-  'assignJobPosting' : IDL.Func([JobPostingId, IDL.Text], [IDL.Bool], []),
+  'assignJobPosting' : IDL.Func(
+      [JobPostingId, IDL.Text, IDL.Text, IDL.Text],
+      [IDL.Bool],
+      [],
+    ),
+  'completeJobPosting' : IDL.Func([JobPostingId], [IDL.Bool], []),
   'createJobPosting' : IDL.Func(
       [IDL.Text, IDL.Text, IDL.Text, IDL.Int, IDL.Int, IDL.Float64, IDL.Text],
       [JobPostingId],
       [],
     ),
   'createNote' : IDL.Func([IDL.Text, IDL.Text], [NoteId], []),
+  'createNotification' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text, IDL.Nat],
+      [NotificationId],
+      [],
+    ),
   'createScheduleEntry' : IDL.Func(
       [IDL.Text, DayOfWeek, IDL.Nat, IDL.Nat, IDL.Text],
       [ScheduleId],
@@ -114,18 +138,22 @@ export const idlService = IDL.Service({
     ),
   'deleteJobPosting' : IDL.Func([JobPostingId], [], []),
   'deleteNote' : IDL.Func([NoteId], [], []),
+  'deleteNotification' : IDL.Func([NotificationId], [], []),
   'deleteScheduleEntry' : IDL.Func([ScheduleId], [], []),
   'deleteTask' : IDL.Func([TaskId], [], []),
   'deleteWorkEntry' : IDL.Func([WorkEntryId], [], []),
   'getAllJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
   'getAllNotes' : IDL.Func([], [IDL.Vec(Note)], ['query']),
+  'getAllNotifications' : IDL.Func([], [IDL.Vec(Notification)], ['query']),
   'getAllScheduleEntries' : IDL.Func([], [IDL.Vec(ScheduleEntry)], ['query']),
   'getAllTasks' : IDL.Func([], [IDL.Vec(Task)], ['query']),
   'getAllWorkEntries' : IDL.Func([], [IDL.Vec(WorkEntry)], ['query']),
+  'getAssignedJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
   'getAvailableJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
   'getNote' : IDL.Func([NoteId], [Note], ['query']),
   'getScheduleEntry' : IDL.Func([ScheduleId], [ScheduleEntry], ['query']),
   'getTask' : IDL.Func([TaskId], [Task], ['query']),
+  'getUnreadCount' : IDL.Func([], [IDL.Nat], ['query']),
   'getWorkEntriesByDate' : IDL.Func(
       [IDL.Text],
       [IDL.Vec(WorkEntry)],
@@ -142,6 +170,8 @@ export const idlService = IDL.Service({
       ['query'],
     ),
   'getWorkEntry' : IDL.Func([WorkEntryId], [WorkEntry], ['query']),
+  'markAllNotificationsRead' : IDL.Func([], [], []),
+  'markNotificationRead' : IDL.Func([NotificationId], [], []),
   'updateNote' : IDL.Func([NoteId, IDL.Text, IDL.Text], [], []),
   'updateScheduleEntry' : IDL.Func(
       [ScheduleId, IDL.Text, DayOfWeek, IDL.Nat, IDL.Nat, IDL.Text],
@@ -175,6 +205,7 @@ export const idlInitArgs = [];
 export const idlFactory = ({ IDL }) => {
   const JobPostingId = IDL.Nat;
   const NoteId = IDL.Nat;
+  const NotificationId = IDL.Nat;
   const DayOfWeek = IDL.Variant({
     'tuesday' : IDL.Null,
     'wednesday' : IDL.Null,
@@ -193,7 +224,12 @@ export const idlFactory = ({ IDL }) => {
   const Time = IDL.Int;
   const TaskId = IDL.Nat;
   const WorkEntryId = IDL.Nat;
-  const JobStatus = IDL.Variant({ 'taken' : IDL.Null, 'available' : IDL.Null });
+  const JobStatus = IDL.Variant({
+    'assigned' : IDL.Null,
+    'deleted' : IDL.Null,
+    'completed' : IDL.Null,
+    'available' : IDL.Null,
+  });
   const JobPosting = IDL.Record({
     'id' : JobPostingId,
     'startTime' : IDL.Int,
@@ -204,6 +240,8 @@ export const idlFactory = ({ IDL }) => {
     'createdAt' : Time,
     'description' : IDL.Text,
     'address' : IDL.Text,
+    'assignedWorkerAddress' : IDL.Text,
+    'assignedWorkerPhone' : IDL.Text,
     'assignedWorkerName' : IDL.Text,
     'paymentAmount' : IDL.Float64,
   });
@@ -211,6 +249,15 @@ export const idlFactory = ({ IDL }) => {
     'id' : NoteId,
     'title' : IDL.Text,
     'body' : IDL.Text,
+    'timestamp' : Time,
+  });
+  const Notification = IDL.Record({
+    'id' : NotificationId,
+    'title' : IDL.Text,
+    'notificationType' : IDL.Text,
+    'jobId' : IDL.Nat,
+    'isRead' : IDL.Bool,
+    'message' : IDL.Text,
     'timestamp' : Time,
   });
   const ScheduleEntry = IDL.Record({
@@ -243,13 +290,23 @@ export const idlFactory = ({ IDL }) => {
   });
   
   return IDL.Service({
-    'assignJobPosting' : IDL.Func([JobPostingId, IDL.Text], [IDL.Bool], []),
+    'assignJobPosting' : IDL.Func(
+        [JobPostingId, IDL.Text, IDL.Text, IDL.Text],
+        [IDL.Bool],
+        [],
+      ),
+    'completeJobPosting' : IDL.Func([JobPostingId], [IDL.Bool], []),
     'createJobPosting' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Text, IDL.Int, IDL.Int, IDL.Float64, IDL.Text],
         [JobPostingId],
         [],
       ),
     'createNote' : IDL.Func([IDL.Text, IDL.Text], [NoteId], []),
+    'createNotification' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Nat],
+        [NotificationId],
+        [],
+      ),
     'createScheduleEntry' : IDL.Func(
         [IDL.Text, DayOfWeek, IDL.Nat, IDL.Nat, IDL.Text],
         [ScheduleId],
@@ -276,18 +333,22 @@ export const idlFactory = ({ IDL }) => {
       ),
     'deleteJobPosting' : IDL.Func([JobPostingId], [], []),
     'deleteNote' : IDL.Func([NoteId], [], []),
+    'deleteNotification' : IDL.Func([NotificationId], [], []),
     'deleteScheduleEntry' : IDL.Func([ScheduleId], [], []),
     'deleteTask' : IDL.Func([TaskId], [], []),
     'deleteWorkEntry' : IDL.Func([WorkEntryId], [], []),
     'getAllJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
     'getAllNotes' : IDL.Func([], [IDL.Vec(Note)], ['query']),
+    'getAllNotifications' : IDL.Func([], [IDL.Vec(Notification)], ['query']),
     'getAllScheduleEntries' : IDL.Func([], [IDL.Vec(ScheduleEntry)], ['query']),
     'getAllTasks' : IDL.Func([], [IDL.Vec(Task)], ['query']),
     'getAllWorkEntries' : IDL.Func([], [IDL.Vec(WorkEntry)], ['query']),
+    'getAssignedJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
     'getAvailableJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
     'getNote' : IDL.Func([NoteId], [Note], ['query']),
     'getScheduleEntry' : IDL.Func([ScheduleId], [ScheduleEntry], ['query']),
     'getTask' : IDL.Func([TaskId], [Task], ['query']),
+    'getUnreadCount' : IDL.Func([], [IDL.Nat], ['query']),
     'getWorkEntriesByDate' : IDL.Func(
         [IDL.Text],
         [IDL.Vec(WorkEntry)],
@@ -304,6 +365,8 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'getWorkEntry' : IDL.Func([WorkEntryId], [WorkEntry], ['query']),
+    'markAllNotificationsRead' : IDL.Func([], [], []),
+    'markNotificationRead' : IDL.Func([NotificationId], [], []),
     'updateNote' : IDL.Func([NoteId, IDL.Text, IDL.Text], [], []),
     'updateScheduleEntry' : IDL.Func(
         [ScheduleId, IDL.Text, DayOfWeek, IDL.Nat, IDL.Nat, IDL.Text],

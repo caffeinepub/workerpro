@@ -8,6 +8,7 @@ import Nat "mo:core/Nat";
 import Float "mo:core/Float";
 
 
+// Use migration helper on upgrade
 
 actor {
   // TASKS
@@ -343,7 +344,9 @@ actor {
 
   type JobStatus = {
     #available;
-    #taken;
+    #assigned;
+    #completed;
+    #deleted;
   };
 
   type JobPosting = {
@@ -357,6 +360,8 @@ actor {
     address : Text;
     status : JobStatus;
     assignedWorkerName : Text;
+    assignedWorkerPhone : Text;
+    assignedWorkerAddress : Text;
     createdAt : Time.Time;
   };
 
@@ -375,6 +380,8 @@ actor {
       address;
       status = #available;
       assignedWorkerName = "";
+      assignedWorkerPhone = "";
+      assignedWorkerAddress = "";
       createdAt = Time.now();
     };
     jobPostings.add(jobId, job);
@@ -390,16 +397,41 @@ actor {
     );
   };
 
+  public query ({ caller }) func getAvailableJobPostingsForWorker(workerId : Text) : async [JobPosting] {
+    let notInterestedIds = jobPreferences.values().toArray().filter(
+      func(pref : JobPreference) : Bool {
+        pref.workerId == workerId and pref.status == #notInterested;
+      }
+    );
+    jobPostings.values().toArray().filter(
+      func(job : JobPosting) : Bool {
+        if (job.status != #available) { return false };
+        for (pref in notInterestedIds.vals()) {
+          if (pref.jobId == job.id) { return false };
+        };
+        true;
+      }
+    );
+  };
+
+  public query ({ caller }) func getAssignedJobPostings() : async [JobPosting] {
+    jobPostings.values().toArray().filter(
+      func(job) {
+        job.status == #assigned;
+      }
+    );
+  };
+
   public query ({ caller }) func getAllJobPostings() : async [JobPosting] {
     jobPostings.values().toArray();
   };
 
-  public shared ({ caller }) func assignJobPosting(id : JobPostingId, workerName : Text) : async Bool {
+  public shared ({ caller }) func assignJobPosting(id : JobPostingId, workerName : Text, workerPhone : Text, workerAddress : Text) : async Bool {
     switch (jobPostings.get(id)) {
       case (null) { false };
       case (?job) {
         switch (job.status) {
-          case (#taken) { false };
+          case (#assigned or #completed or #deleted) { false };
           case (#available) {
             let updatedJob : JobPosting = {
               id = job.id;
@@ -410,8 +442,40 @@ actor {
               endTime = job.endTime;
               paymentAmount = job.paymentAmount;
               address = job.address;
-              status = #taken;
+              status = #assigned;
               assignedWorkerName = workerName;
+              assignedWorkerPhone = workerPhone;
+              assignedWorkerAddress = workerAddress;
+              createdAt = job.createdAt;
+            };
+            jobPostings.add(id, updatedJob);
+            true;
+          };
+        };
+      };
+    };
+  };
+
+  public shared ({ caller }) func completeJobPosting(id : JobPostingId) : async Bool {
+    switch (jobPostings.get(id)) {
+      case (null) { false };
+      case (?job) {
+        switch (job.status) {
+          case (#completed or #deleted or #available) { false };
+          case (#assigned) {
+            let updatedJob : JobPosting = {
+              id = job.id;
+              title = job.title;
+              description = job.description;
+              date = job.date;
+              startTime = job.startTime;
+              endTime = job.endTime;
+              paymentAmount = job.paymentAmount;
+              address = job.address;
+              status = #completed;
+              assignedWorkerName = job.assignedWorkerName;
+              assignedWorkerPhone = job.assignedWorkerPhone;
+              assignedWorkerAddress = job.assignedWorkerAddress;
               createdAt = job.createdAt;
             };
             jobPostings.add(id, updatedJob);
@@ -423,8 +487,61 @@ actor {
   };
 
   public shared ({ caller }) func deleteJobPosting(id : JobPostingId) : async () {
-    if (not jobPostings.containsKey(id)) { Runtime.trap("Job posting not found") };
-    jobPostings.remove(id);
+    switch (jobPostings.get(id)) {
+      case (null) { () };
+      case (?jobEntry) {
+        let updatedJob : JobPosting = {
+          id = jobEntry.id;
+          title = jobEntry.title;
+          description = jobEntry.description;
+          date = jobEntry.date;
+          startTime = jobEntry.startTime;
+          endTime = jobEntry.endTime;
+          paymentAmount = jobEntry.paymentAmount;
+          address = jobEntry.address;
+          status = #deleted;
+          assignedWorkerName = jobEntry.assignedWorkerName;
+          assignedWorkerPhone = jobEntry.assignedWorkerPhone;
+          assignedWorkerAddress = jobEntry.assignedWorkerAddress;
+          createdAt = jobEntry.createdAt;
+        };
+        jobPostings.add(id, updatedJob);
+      };
+    };
+  };
+
+  // JOB PREFERENCES
+
+  type JobPreferenceStatus = {
+    #interested;
+    #notInterested;
+  };
+
+  type JobPreference = {
+    workerId : Text;
+    jobId : JobPostingId;
+    status : JobPreferenceStatus;
+  };
+
+  // Key: workerId # "_" # jobId
+  let jobPreferences = Map.empty<Text, JobPreference>();
+
+  public shared ({ caller }) func setJobPreference(workerId : Text, jobId : JobPostingId, interested : Bool) : async () {
+    let key = workerId # "_" # jobId.toText();
+    let pref : JobPreference = {
+      workerId;
+      jobId;
+      status = if (interested) { #interested } else { #notInterested };
+    };
+    jobPreferences.add(key, pref);
+  };
+
+  public query ({ caller }) func getNotInterestedJobIds(workerId : Text) : async [JobPostingId] {
+    jobPreferences.values().toArray().filter(
+      func(pref : JobPreference) : Bool {
+        pref.workerId == workerId and pref.status == #notInterested;
+      }
+    ).map(func(pref : JobPreference) : JobPostingId { pref.jobId });
   };
 
   // NOTIFICATIONS

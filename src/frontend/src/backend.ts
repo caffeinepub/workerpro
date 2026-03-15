@@ -129,12 +129,24 @@ export interface JobPosting {
     createdAt: Time;
     description: string;
     address: string;
+    assignedWorkerAddress: string;
+    assignedWorkerPhone: string;
     assignedWorkerName: string;
     paymentAmount: number;
 }
 export type WorkEntryId = bigint;
 export type ScheduleId = bigint;
 export type TaskId = bigint;
+export type NotificationId = bigint;
+export interface Notification {
+    id: NotificationId;
+    title: string;
+    notificationType: string;
+    jobId: bigint;
+    isRead: boolean;
+    message: string;
+    timestamp: Time;
+}
 export type JobPostingId = bigint;
 export interface Note {
     id: NoteId;
@@ -152,7 +164,9 @@ export enum DayOfWeek {
     monday = "monday"
 }
 export enum JobStatus {
-    taken = "taken",
+    assigned = "assigned",
+    deleted = "deleted",
+    completed = "completed",
     available = "available"
 }
 export enum Priority {
@@ -161,30 +175,38 @@ export enum Priority {
     medium = "medium"
 }
 export interface backendInterface {
-    assignJobPosting(id: JobPostingId, workerName: string): Promise<boolean>;
+    assignJobPosting(id: JobPostingId, workerName: string, workerPhone: string, workerAddress: string): Promise<boolean>;
+    completeJobPosting(id: JobPostingId): Promise<boolean>;
     createJobPosting(title: string, description: string, date: string, startTime: bigint, endTime: bigint, paymentAmount: number, address: string): Promise<JobPostingId>;
     createNote(title: string, body: string): Promise<NoteId>;
+    createNotification(title: string, message: string, notificationType: string, jobId: bigint): Promise<NotificationId>;
     createScheduleEntry(title: string, dayOfWeek: DayOfWeek, startTime: bigint, endTime: bigint, notes: string): Promise<ScheduleId>;
     createTask(title: string, description: string, priority: Priority, dueDate: Time | null): Promise<TaskId>;
     createWorkEntry(workerName: string, date: string, workType: string, startTime: bigint, endTime: bigint, hoursWorked: number, dailyPayment: number, notes: string): Promise<WorkEntryId>;
     deleteJobPosting(id: JobPostingId): Promise<void>;
     deleteNote(noteId: NoteId): Promise<void>;
+    deleteNotification(id: NotificationId): Promise<void>;
     deleteScheduleEntry(entryId: ScheduleId): Promise<void>;
     deleteTask(taskId: TaskId): Promise<void>;
     deleteWorkEntry(entryId: WorkEntryId): Promise<void>;
     getAllJobPostings(): Promise<Array<JobPosting>>;
     getAllNotes(): Promise<Array<Note>>;
+    getAllNotifications(): Promise<Array<Notification>>;
     getAllScheduleEntries(): Promise<Array<ScheduleEntry>>;
     getAllTasks(): Promise<Array<Task>>;
     getAllWorkEntries(): Promise<Array<WorkEntry>>;
+    getAssignedJobPostings(): Promise<Array<JobPosting>>;
     getAvailableJobPostings(): Promise<Array<JobPosting>>;
     getNote(noteId: NoteId): Promise<Note>;
     getScheduleEntry(entryId: ScheduleId): Promise<ScheduleEntry>;
     getTask(taskId: TaskId): Promise<Task>;
+    getUnreadCount(): Promise<bigint>;
     getWorkEntriesByDate(date: string): Promise<Array<WorkEntry>>;
     getWorkEntriesByDateRange(fromDate: string, toDate: string): Promise<Array<WorkEntry>>;
     getWorkEntriesByWorker(workerName: string): Promise<Array<WorkEntry>>;
     getWorkEntry(entryId: WorkEntryId): Promise<WorkEntry>;
+    markAllNotificationsRead(): Promise<void>;
+    markNotificationRead(id: NotificationId): Promise<void>;
     updateNote(noteId: NoteId, title: string, body: string): Promise<void>;
     updateScheduleEntry(entryId: ScheduleId, title: string, dayOfWeek: DayOfWeek, startTime: bigint, endTime: bigint, notes: string): Promise<void>;
     updateTask(taskId: TaskId, title: string, description: string, priority: Priority, dueDate: Time | null, completed: boolean): Promise<void>;
@@ -193,17 +215,31 @@ export interface backendInterface {
 import type { DayOfWeek as _DayOfWeek, JobPosting as _JobPosting, JobPostingId as _JobPostingId, JobStatus as _JobStatus, Priority as _Priority, ScheduleEntry as _ScheduleEntry, ScheduleId as _ScheduleId, Task as _Task, TaskId as _TaskId, Time as _Time } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
-    async assignJobPosting(arg0: JobPostingId, arg1: string): Promise<boolean> {
+    async assignJobPosting(arg0: JobPostingId, arg1: string, arg2: string, arg3: string): Promise<boolean> {
         if (this.processError) {
             try {
-                const result = await this.actor.assignJobPosting(arg0, arg1);
+                const result = await this.actor.assignJobPosting(arg0, arg1, arg2, arg3);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.assignJobPosting(arg0, arg1);
+            const result = await this.actor.assignJobPosting(arg0, arg1, arg2, arg3);
+            return result;
+        }
+    }
+    async completeJobPosting(arg0: JobPostingId): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.completeJobPosting(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.completeJobPosting(arg0);
             return result;
         }
     }
@@ -232,6 +268,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.createNote(arg0, arg1);
+            return result;
+        }
+    }
+    async createNotification(arg0: string, arg1: string, arg2: string, arg3: bigint): Promise<NotificationId> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.createNotification(arg0, arg1, arg2, arg3);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.createNotification(arg0, arg1, arg2, arg3);
             return result;
         }
     }
@@ -305,6 +355,20 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async deleteNotification(arg0: NotificationId): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.deleteNotification(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.deleteNotification(arg0);
+            return result;
+        }
+    }
     async deleteScheduleEntry(arg0: ScheduleId): Promise<void> {
         if (this.processError) {
             try {
@@ -375,6 +439,20 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async getAllNotifications(): Promise<Array<Notification>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getAllNotifications();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getAllNotifications();
+            return result;
+        }
+    }
     async getAllScheduleEntries(): Promise<Array<ScheduleEntry>> {
         if (this.processError) {
             try {
@@ -415,6 +493,20 @@ export class Backend implements backendInterface {
         } else {
             const result = await this.actor.getAllWorkEntries();
             return result;
+        }
+    }
+    async getAssignedJobPostings(): Promise<Array<JobPosting>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getAssignedJobPostings();
+                return from_candid_vec_n6(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getAssignedJobPostings();
+            return from_candid_vec_n6(this._uploadFile, this._downloadFile, result);
         }
     }
     async getAvailableJobPostings(): Promise<Array<JobPosting>> {
@@ -473,6 +565,20 @@ export class Backend implements backendInterface {
             return from_candid_Task_n17(this._uploadFile, this._downloadFile, result);
         }
     }
+    async getUnreadCount(): Promise<bigint> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getUnreadCount();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getUnreadCount();
+            return result;
+        }
+    }
     async getWorkEntriesByDate(arg0: string): Promise<Array<WorkEntry>> {
         if (this.processError) {
             try {
@@ -526,6 +632,34 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.getWorkEntry(arg0);
+            return result;
+        }
+    }
+    async markAllNotificationsRead(): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.markAllNotificationsRead();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.markAllNotificationsRead();
+            return result;
+        }
+    }
+    async markNotificationRead(arg0: NotificationId): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.markNotificationRead(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.markNotificationRead(arg0);
             return result;
         }
     }
@@ -665,6 +799,8 @@ function from_candid_record_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint
     createdAt: _Time;
     description: string;
     address: string;
+    assignedWorkerAddress: string;
+    assignedWorkerPhone: string;
     assignedWorkerName: string;
     paymentAmount: number;
 }): {
@@ -677,6 +813,8 @@ function from_candid_record_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint
     createdAt: Time;
     description: string;
     address: string;
+    assignedWorkerAddress: string;
+    assignedWorkerPhone: string;
     assignedWorkerName: string;
     paymentAmount: number;
 } {
@@ -690,16 +828,22 @@ function from_candid_record_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint
         createdAt: value.createdAt,
         description: value.description,
         address: value.address,
+        assignedWorkerAddress: value.assignedWorkerAddress,
+        assignedWorkerPhone: value.assignedWorkerPhone,
         assignedWorkerName: value.assignedWorkerName,
         paymentAmount: value.paymentAmount
     };
 }
 function from_candid_variant_n10(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    taken: null;
+    assigned: null;
+} | {
+    deleted: null;
+} | {
+    completed: null;
 } | {
     available: null;
 }): JobStatus {
-    return "taken" in value ? JobStatus.taken : "available" in value ? JobStatus.available : value;
+    return "assigned" in value ? JobStatus.assigned : "deleted" in value ? JobStatus.deleted : "completed" in value ? JobStatus.completed : "available" in value ? JobStatus.available : value;
 }
 function from_candid_variant_n15(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     tuesday: null;

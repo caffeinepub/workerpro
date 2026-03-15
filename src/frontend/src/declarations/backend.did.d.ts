@@ -27,11 +27,15 @@ export interface JobPosting {
   'createdAt' : Time,
   'description' : string,
   'address' : string,
+  'assignedWorkerAddress' : string,
+  'assignedWorkerPhone' : string,
   'assignedWorkerName' : string,
   'paymentAmount' : number,
 }
 export type JobPostingId = bigint;
-export type JobStatus = { 'taken' : null } |
+export type JobStatus = { 'assigned' : null } |
+  { 'deleted' : null } |
+  { 'completed' : null } |
   { 'available' : null };
 export interface Note {
   'id' : NoteId,
@@ -40,6 +44,16 @@ export interface Note {
   'timestamp' : Time,
 }
 export type NoteId = bigint;
+export interface Notification {
+  'id' : NotificationId,
+  'title' : string,
+  'notificationType' : string,
+  'jobId' : bigint,
+  'isRead' : boolean,
+  'message' : string,
+  'timestamp' : Time,
+}
+export type NotificationId = bigint;
 export type Priority = { 'low' : null } |
   { 'high' : null } |
   { 'medium' : null };
@@ -76,12 +90,20 @@ export interface WorkEntry {
 }
 export type WorkEntryId = bigint;
 export interface _SERVICE {
-  'assignJobPosting' : ActorMethod<[JobPostingId, string], boolean>,
+  'assignJobPosting' : ActorMethod<
+    [JobPostingId, string, string, string],
+    boolean
+  >,
+  'completeJobPosting' : ActorMethod<[JobPostingId], boolean>,
   'createJobPosting' : ActorMethod<
     [string, string, string, bigint, bigint, number, string],
     JobPostingId
   >,
   'createNote' : ActorMethod<[string, string], NoteId>,
+  'createNotification' : ActorMethod<
+    [string, string, string, bigint],
+    NotificationId
+  >,
   'createScheduleEntry' : ActorMethod<
     [string, DayOfWeek, bigint, bigint, string],
     ScheduleId
@@ -93,22 +115,28 @@ export interface _SERVICE {
   >,
   'deleteJobPosting' : ActorMethod<[JobPostingId], undefined>,
   'deleteNote' : ActorMethod<[NoteId], undefined>,
+  'deleteNotification' : ActorMethod<[NotificationId], undefined>,
   'deleteScheduleEntry' : ActorMethod<[ScheduleId], undefined>,
   'deleteTask' : ActorMethod<[TaskId], undefined>,
   'deleteWorkEntry' : ActorMethod<[WorkEntryId], undefined>,
   'getAllJobPostings' : ActorMethod<[], Array<JobPosting>>,
   'getAllNotes' : ActorMethod<[], Array<Note>>,
+  'getAllNotifications' : ActorMethod<[], Array<Notification>>,
   'getAllScheduleEntries' : ActorMethod<[], Array<ScheduleEntry>>,
   'getAllTasks' : ActorMethod<[], Array<Task>>,
   'getAllWorkEntries' : ActorMethod<[], Array<WorkEntry>>,
+  'getAssignedJobPostings' : ActorMethod<[], Array<JobPosting>>,
   'getAvailableJobPostings' : ActorMethod<[], Array<JobPosting>>,
   'getNote' : ActorMethod<[NoteId], Note>,
   'getScheduleEntry' : ActorMethod<[ScheduleId], ScheduleEntry>,
   'getTask' : ActorMethod<[TaskId], Task>,
+  'getUnreadCount' : ActorMethod<[], bigint>,
   'getWorkEntriesByDate' : ActorMethod<[string], Array<WorkEntry>>,
   'getWorkEntriesByDateRange' : ActorMethod<[string, string], Array<WorkEntry>>,
   'getWorkEntriesByWorker' : ActorMethod<[string], Array<WorkEntry>>,
   'getWorkEntry' : ActorMethod<[WorkEntryId], WorkEntry>,
+  'markAllNotificationsRead' : ActorMethod<[], undefined>,
+  'markNotificationRead' : ActorMethod<[NotificationId], undefined>,
   'updateNote' : ActorMethod<[NoteId, string, string], undefined>,
   'updateScheduleEntry' : ActorMethod<
     [ScheduleId, string, DayOfWeek, bigint, bigint, string],

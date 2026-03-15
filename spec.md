@@ -1,37 +1,33 @@
 # WorkerPro
 
 ## Current State
-- Worker profiles stored in localStorage with name, phone, address, skill (Workers.tsx)
-- Job extras stored in localStorage: contactNumber, workerPhone, workerAddress, completionStatus
-- Assignment flow saves workerPhone and workerAddress when a registered worker is selected
-- Available Work cards currently display contactNumber (should be hidden per security requirement)
-- Assigned Work cards show worker name, phone, date, time, payment, address (no Call Worker button, no employer contact section, no worker skill)
+- Job Board Available Work tab has job cards with basic View Details modal (date, time, payment, address only).
+- Not Interested logic saves to backend JobPreferences and hides cards immediately.
+- Backend filters NotInterested jobs per workerId via getAvailableJobPostingsForWorker.
+- Contact phone/name stored in localStorage extras by employer when posting.
+- Job createdAt field exists in backend but not shown anywhere.
+- No Work Category field exists.
 
 ## Requested Changes (Diff)
 
 ### Add
-- `workerSkill` and `workerId` fields to `JobExtra` interface and saved on assignment
-- "Call Worker" button on Assigned Work cards (tel: link using workerPhone)
-- "Call Employer" button on Assigned Work cards (tel: link using contactNumber saved at post time)
-- Employer contact section on Assigned Work cards (contact name, phone, work address) -- worker view
-- Worker skill displayed in Assigned Work cards -- contractor view
-- Work location (job.address) clearly labeled on Assigned Work cards
+- Work Category field in Post Work form (stored in extras).
+- Full Job Details modal: Work Title, Description, Category, Date, Start/End Time, Payment, Address, Google Maps link, Contact Phone, Posted Date.
+- View Location button opening Google Maps with job address.
+- I'm Interested and Not Interested action buttons inside the modal.
 
 ### Modify
-- Remove contactNumber display from Available Work job cards (security: no phone in public listings)
-- Remove contactNumber from View Details dialog in Available Work
-- Assigned Work cards: expand to show all required fields (title, worker name, phone, address, skill, date, time, payment, location)
-- Assignment confirm flow: save workerId and workerSkill in extras alongside existing fields
+- View Details dialog upgraded to full Job Details modal with all fields.
+- Post Work form: add Category input, save to extras on submit.
+- Contact phone from extras shown in Job Details modal.
+- Posted Date formatted from job.createdAt nanoseconds.
 
 ### Remove
-- Phone number visibility in public Available Work section
+- Nothing.
 
 ## Implementation Plan
-1. Update `JobExtra` interface to add `workerSkill: string` and `workerId: string`
-2. Update `saveExtra` default values and `handleConfirm` to persist workerId + workerSkill
-3. Remove contactNumber display from AvailableWorkTab cards and View Details dialog
-4. Update AssignedWorkTab card layout:
-   - Show all fields: title, badge, worker name, phone, address, skill, date, time, payment, work location
-   - Add "Call Worker" button (tel:{workerPhone}) when phone is available
-   - Add employer section showing contactNumber with "Call Employer" button (tel:{contactNumber})
-5. Apply data-ocid markers to new buttons
+1. Add category to extras interface, saveExtra, and getExtras.
+2. Add Category input to PostWorkTab, save in extras on submit.
+3. Upgrade View Details dialog to show all required fields including category, contact phone, posted date.
+4. Add View Location button linking to Google Maps.
+5. Ensure Not Interested inside modal triggers instant removal and toast.

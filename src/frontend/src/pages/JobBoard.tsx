@@ -32,6 +32,7 @@ import {
   MapPin,
   Phone,
   PlusCircle,
+  Tag,
   TrendingUp,
   User,
   UserCheck,
@@ -42,9 +43,12 @@ import { toast } from "sonner";
 import {
   JobStatus,
   useAssignJobPosting,
+  useCompleteJobPosting,
   useCreateJobPosting,
   useGetAllJobPostings,
-  useGetAvailableJobPostings,
+  useGetAssignedJobPostings,
+  useGetAvailableJobPostingsForWorker,
+  useSetJobPreference,
 } from "../hooks/useJobQueries";
 import type { JobPosting } from "../hooks/useJobQueries";
 import { useCreateNotification } from "../hooks/useNotificationQueries";
@@ -85,6 +89,7 @@ interface JobExtra {
   workerSkill: string;
   workerId: string;
   completionStatus: "assigned" | "completed";
+  category: string;
 }
 
 export function getExtras(): Record<string, JobExtra> {
@@ -107,6 +112,7 @@ function saveExtra(jobId: string, extra: Partial<JobExtra>) {
       workerSkill: "",
       workerId: "",
       completionStatus: "assigned",
+      category: "",
     },
     ...all[jobId],
     ...extra,
@@ -120,6 +126,7 @@ function PostWorkTab() {
   const createNotif = useCreateNotification();
   const [form, setForm] = useState({
     title: "",
+    category: "",
     description: "",
     date: "",
     startTime: "",
@@ -167,6 +174,7 @@ function PostWorkTab() {
         workerSkill: "",
         workerId: "",
         completionStatus: "assigned",
+        category: form.category,
       });
       toast.success("Job posted successfully!");
       createNotif.mutate({
@@ -181,6 +189,7 @@ function PostWorkTab() {
       );
       setForm({
         title: "",
+        category: "",
         description: "",
         date: "",
         startTime: "",
@@ -215,6 +224,19 @@ function PostWorkTab() {
                 onChange={set("title")}
                 className="bg-input/50"
               />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-500">Work Category</Label>
+              <div className="relative">
+                <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  data-ocid="postwork.category.input"
+                  placeholder="e.g. Painting, Plumbing, Electrical"
+                  value={form.category}
+                  onChange={set("category")}
+                  className="bg-input/50 pl-10"
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <Label className="text-sm font-500">Work Description</Label>
@@ -380,7 +402,18 @@ type AvailableFilter = "all" | "today" | "upcoming";
 
 // --- Available Work Tab ---
 function AvailableWorkTab() {
-  const { data: jobs, isLoading } = useGetAvailableJobPostings();
+  const [workerId] = useState<string>(() => {
+    let id = localStorage.getItem("workerpro_worker_id");
+    if (!id) {
+      id = `worker_${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem("workerpro_worker_id", id);
+    }
+    return id;
+  });
+  const [hiddenJobIds, setHiddenJobIds] = useState<Set<string>>(new Set());
+  const { data: rawJobs, isLoading } =
+    useGetAvailableJobPostingsForWorker(workerId);
+  const setJobPref = useSetJobPreference();
   const assign = useAssignJobPosting();
   const createNotif = useCreateNotification();
   const [filter, setFilter] = useState<AvailableFilter>("all");
@@ -393,6 +426,7 @@ function AvailableWorkTab() {
   const [selectedWorkerId, setSelectedWorkerId] = useState("");
   const [workerInput, setWorkerInput] = useState("");
   const workers = getWorkers();
+  const jobs = rawJobs?.filter((j) => !hiddenJobIds.has(j.id.toString()));
 
   const today = todayStr();
 
@@ -412,6 +446,15 @@ function AvailableWorkTab() {
     setWorkerInput("");
   };
 
+  const handleNotInterested = async (job: JobPosting) => {
+    // Optimistically remove the card immediately
+    setHiddenJobIds((prev) => new Set([...prev, job.id.toString()]));
+    if (viewJob?.id === job.id) setViewJob(null);
+    toast.success("Job removed from your list.");
+    // Persist preference to backend (best-effort)
+    setJobPref.mutate({ workerId, jobId: job.id, interested: false });
+  };
+
   const selectedWorkerObj = workers.find((w) => w.id === selectedWorkerId);
 
   const handleConfirm = async () => {
@@ -422,7 +465,12 @@ function AvailableWorkTab() {
       return;
     }
     try {
-      await assign.mutateAsync({ id: selectedJob.id, workerName: finalName });
+      await assign.mutateAsync({
+        id: selectedJob.id,
+        workerName: finalName,
+        workerPhone: selectedWorkerObj?.phone || "",
+        workerAddress: selectedWorkerObj?.address || "",
+      });
       saveExtra(selectedJob.id.toString(), {
         completionStatus: "assigned",
         workerPhone: selectedWorkerObj?.phone || "",
@@ -561,23 +609,34 @@ function AvailableWorkTab() {
                     </div>
                     {/* Phone numbers intentionally hidden from public listings (security) */}
                   </div>
-                  <div className="flex gap-2 mt-auto pt-2">
+                  <div className="flex flex-col gap-2 mt-auto pt-2">
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        data-ocid={`available.job.view_details.button.${idx + 1}`}
+                        onClick={() => setViewJob(job)}
+                        className="flex-1 text-xs"
+                      >
+                        View Details
+                      </Button>
+                      <Button
+                        size="sm"
+                        data-ocid={`available.job.interested.button.${idx + 1}`}
+                        onClick={() => handleInterested(job)}
+                        className="flex-1 text-xs"
+                      >
+                        I&#39;m Interested
+                      </Button>
+                    </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      data-ocid={`available.job.view_details.button.${idx + 1}`}
-                      onClick={() => setViewJob(job)}
-                      className="flex-1 text-xs"
+                      data-ocid={`available.job.not_interested.button.${idx + 1}`}
+                      onClick={() => handleNotInterested(job)}
+                      className="w-full text-xs text-muted-foreground hover:text-destructive hover:border-destructive/50"
                     >
-                      View Details
-                    </Button>
-                    <Button
-                      size="sm"
-                      data-ocid={`available.job.interested.button.${idx + 1}`}
-                      onClick={() => handleInterested(job)}
-                      className="flex-1 text-xs"
-                    >
-                      I&#39;m Interested
+                      Not Interested
                     </Button>
                   </div>
                 </CardContent>
@@ -594,47 +653,140 @@ function AvailableWorkTab() {
           if (!o) setViewJob(null);
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent
+          data-ocid="job_details.dialog"
+          className="max-w-lg max-h-[90vh] overflow-y-auto"
+        >
           <DialogHeader>
-            <DialogTitle className="font-display">{viewJob?.title}</DialogTitle>
-            <DialogDescription>Full job details</DialogDescription>
-          </DialogHeader>
-          {viewJob && (
-            <div className="space-y-3 text-sm">
-              {viewJob.description && (
-                <p className="text-foreground">{viewJob.description}</p>
+            <DialogTitle className="font-display text-lg">
+              {viewJob?.title}
+            </DialogTitle>
+            <DialogDescription>
+              {viewJob && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5" />
+                  {getExtras()[viewJob.id.toString()]?.category || "General"}
+                </span>
               )}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="glass-card rounded-lg p-3">
-                  <p className="text-muted-foreground text-xs mb-1">Date</p>
-                  <p className="font-600">{viewJob.date}</p>
+            </DialogDescription>
+          </DialogHeader>
+          {viewJob &&
+            (() => {
+              const extra = getExtras()[viewJob.id.toString()];
+              const postedDate = new Date(
+                Number(viewJob.createdAt) / 1_000_000,
+              ).toLocaleDateString("en-IN", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+              });
+              return (
+                <div className="space-y-4 text-sm">
+                  {/* Description */}
+                  {viewJob.description && (
+                    <div className="glass-card rounded-lg p-3">
+                      <p className="text-muted-foreground text-xs mb-1 font-600 uppercase tracking-wide">
+                        Description
+                      </p>
+                      <p className="text-foreground leading-relaxed">
+                        {viewJob.description}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Date, Time, Payment */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="glass-card rounded-lg p-3">
+                      <p className="text-muted-foreground text-xs mb-1 flex items-center gap-1">
+                        <CalendarDays className="w-3 h-3" /> Work Date
+                      </p>
+                      <p className="font-600 text-foreground">{viewJob.date}</p>
+                    </div>
+                    <div className="glass-card rounded-lg p-3">
+                      <p className="text-muted-foreground text-xs mb-1 flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> Time
+                      </p>
+                      <p className="font-600 text-foreground">
+                        {minutesToTime(viewJob.startTime)} –{" "}
+                        {minutesToTime(viewJob.endTime)}
+                      </p>
+                    </div>
+                    <div className="glass-card rounded-lg p-3">
+                      <p className="text-muted-foreground text-xs mb-1 flex items-center gap-1">
+                        <IndianRupee className="w-3 h-3" /> Payment
+                      </p>
+                      <p className="font-600 text-primary text-base">
+                        &#8377;{viewJob.paymentAmount.toLocaleString("en-IN")}
+                      </p>
+                    </div>
+                    <div className="glass-card rounded-lg p-3">
+                      <p className="text-muted-foreground text-xs mb-1 flex items-center gap-1">
+                        <CalendarDays className="w-3 h-3" /> Posted On
+                      </p>
+                      <p className="font-600 text-foreground">{postedDate}</p>
+                    </div>
+                  </div>
+
+                  {/* Address */}
+                  <div className="glass-card rounded-lg p-3">
+                    <p className="text-muted-foreground text-xs mb-1 flex items-center gap-1">
+                      <MapPin className="w-3 h-3" /> Address
+                    </p>
+                    <p className="font-600 text-foreground">
+                      {viewJob.address}
+                    </p>
+                  </div>
+
+                  {/* Contact Phone */}
+                  <div className="glass-card rounded-lg p-3">
+                    <p className="text-muted-foreground text-xs mb-1 flex items-center gap-1">
+                      <Phone className="w-3 h-3" /> Contact Phone
+                    </p>
+                    {extra?.contactNumber ? (
+                      <p className="font-600 text-foreground">
+                        {extra.contactNumber}
+                      </p>
+                    ) : (
+                      <p className="text-muted-foreground italic text-xs">
+                        Contact available after assignment
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="glass-card rounded-lg p-3">
-                  <p className="text-muted-foreground text-xs mb-1">Time</p>
-                  <p className="font-600">
-                    {minutesToTime(viewJob.startTime)} &#8211;{" "}
-                    {minutesToTime(viewJob.endTime)}
-                  </p>
-                </div>
-                <div className="glass-card rounded-lg p-3 col-span-2">
-                  <p className="text-muted-foreground text-xs mb-1">Payment</p>
-                  <p className="font-600 text-primary">
-                    &#8377;{viewJob.paymentAmount.toLocaleString("en-IN")}
-                  </p>
-                </div>
-              </div>
-              <div className="glass-card rounded-lg p-3">
-                <p className="text-muted-foreground text-xs mb-1">Address</p>
-                <p className="font-600">{viewJob.address}</p>
-              </div>
-              {/* Contact details hidden from public view — shown only after assignment */}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setViewJob(null)}>
-              Close
-            </Button>
+              );
+            })()}
+          <DialogFooter className="flex-col sm:flex-row gap-2 pt-2">
             <Button
+              variant="outline"
+              size="sm"
+              data-ocid="job_details.not_interested.button"
+              className="text-destructive border-destructive/40 hover:bg-destructive/10 sm:mr-auto"
+              onClick={() => {
+                if (viewJob) handleNotInterested(viewJob);
+              }}
+            >
+              Not Interested
+            </Button>
+            {viewJob && (
+              <Button
+                variant="outline"
+                size="sm"
+                data-ocid="job_details.view_location.button"
+                asChild
+              >
+                <a
+                  href={`https://maps.google.com/?q=${encodeURIComponent(viewJob.address)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <MapPin className="w-4 h-4 mr-1.5" />
+                  View Location
+                </a>
+              </Button>
+            )}
+            <Button
+              size="sm"
+              data-ocid="job_details.interested.button"
               onClick={() => {
                 setViewJob(null);
                 if (viewJob) handleInterested(viewJob);
@@ -761,59 +913,41 @@ function AvailableWorkTab() {
   );
 }
 
-type AssignedFilter = "all" | "today" | "upcoming" | "completed";
+type AssignedFilter = "all" | "today" | "upcoming";
 
 // --- Assigned Work Tab ---
 function AssignedWorkTab() {
-  const { data: jobs, isLoading } = useGetAllJobPostings();
+  const { data: jobs, isLoading } = useGetAssignedJobPostings();
   const createNotif = useCreateNotification();
-  const [extras, setExtras] = useState<Record<string, JobExtra>>(() =>
-    getExtras(),
-  );
+  const completeJob = useCompleteJobPosting();
+  const [extras] = useState<Record<string, JobExtra>>(() => getExtras());
   const [filter, setFilter] = useState<AssignedFilter>("all");
 
   const today = todayStr();
 
-  const assignedJobs = useMemo(
-    () => (jobs || []).filter((j) => j.status === JobStatus.taken),
-    [jobs],
-  );
-
   const filteredAssigned = useMemo(() => {
-    if (filter === "today")
-      return assignedJobs.filter(
-        (j) =>
-          j.date === today &&
-          extras[j.id.toString()]?.completionStatus !== "completed",
-      );
-    if (filter === "upcoming")
-      return assignedJobs.filter(
-        (j) =>
-          j.date > today &&
-          extras[j.id.toString()]?.completionStatus !== "completed",
-      );
-    if (filter === "completed")
-      return assignedJobs.filter(
-        (j) => extras[j.id.toString()]?.completionStatus === "completed",
-      );
-    return assignedJobs;
-  }, [assignedJobs, filter, today, extras]);
-
-  const handleComplete = (jobId: string) => {
-    saveExtra(jobId, { completionStatus: "completed" });
-    setExtras(getExtras());
-    toast.success("Job marked as completed!");
-    const job = jobs?.find((j) => j.id.toString() === jobId);
-    createNotif.mutate({
-      title: "Job Completed",
-      message: `Job completed successfully: ${job?.title || "Job"}`,
-      notificationType: "job_completed",
-      jobId: BigInt(jobId),
-    });
-    showBrowserNotification(
-      "Job Completed",
-      `Completed: ${job?.title || "Job"}`,
+    const sorted = [...(jobs || [])].sort((a, b) =>
+      a.date < b.date ? -1 : a.date > b.date ? 1 : 0,
     );
+    if (filter === "today") return sorted.filter((j) => j.date === today);
+    if (filter === "upcoming") return sorted.filter((j) => j.date > today);
+    return sorted;
+  }, [jobs, filter, today]);
+
+  const handleComplete = async (job: JobPosting) => {
+    try {
+      await completeJob.mutateAsync(job.id);
+      toast.success("Job marked as completed!");
+      createNotif.mutate({
+        title: "Job Completed",
+        message: `Job completed successfully: ${job.title}`,
+        notificationType: "job_completed",
+        jobId: job.id,
+      });
+      showBrowserNotification("Job Completed", `Completed: ${job.title}`);
+    } catch {
+      toast.error("Failed to mark job as completed");
+    }
   };
 
   if (isLoading) {
@@ -858,14 +992,6 @@ function AssignedWorkTab() {
         >
           Upcoming
         </Button>
-        <Button
-          variant={filter === "completed" ? "default" : "outline"}
-          size="sm"
-          data-ocid="assigned.filter.completed.tab"
-          onClick={() => setFilter("completed")}
-        >
-          Completed
-        </Button>
       </div>
 
       {filteredAssigned.length === 0 ? (
@@ -884,7 +1010,6 @@ function AssignedWorkTab() {
       ) : (
         filteredAssigned.map((job, idx) => {
           const extra = extras[job.id.toString()];
-          const isCompleted = extra?.completionStatus === "completed";
           return (
             <motion.div
               key={job.id.toString()}
@@ -900,19 +1025,13 @@ function AssignedWorkTab() {
                     <h3 className="font-display font-600 text-foreground text-base leading-tight">
                       {job.title}
                     </h3>
-                    <Badge
-                      className={
-                        isCompleted
-                          ? "bg-green-500/20 text-green-400 border-green-500/30 shrink-0"
-                          : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30 shrink-0"
-                      }
-                    >
-                      {isCompleted ? "Completed" : "Assigned"}
+                    <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 shrink-0">
+                      Assigned
                     </Badge>
                   </div>
 
                   {/* Worker Details (Contractor View) */}
-                  {(job.assignedWorkerName || extra?.workerPhone) && (
+                  {(job.assignedWorkerName || job.assignedWorkerPhone) && (
                     <>
                       <Separator className="opacity-40" />
                       <div className="space-y-2">
@@ -935,16 +1054,16 @@ function AssignedWorkTab() {
                               <span>{extra.workerSkill}</span>
                             </div>
                           )}
-                          {extra?.workerPhone && (
+                          {job.assignedWorkerPhone && (
                             <div className="flex items-center gap-2 text-muted-foreground">
                               <Phone className="w-3.5 h-3.5 shrink-0" />
-                              <span>{extra.workerPhone}</span>
+                              <span>{job.assignedWorkerPhone}</span>
                             </div>
                           )}
-                          {extra?.workerAddress && (
+                          {job.assignedWorkerAddress && (
                             <div className="flex items-start gap-2 text-muted-foreground sm:col-span-2">
                               <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                              <span>{extra.workerAddress}</span>
+                              <span>{job.assignedWorkerAddress}</span>
                             </div>
                           )}
                         </div>
@@ -1026,14 +1145,14 @@ function AssignedWorkTab() {
                   {/* Action Buttons */}
                   <Separator className="opacity-40" />
                   <div className="flex flex-wrap gap-2">
-                    {extra?.workerPhone && (
+                    {job.assignedWorkerPhone && (
                       <Button
                         size="sm"
                         className="bg-green-600 hover:bg-green-700 text-white border-0"
                         data-ocid={`assigned.job.call_worker.button.${idx + 1}`}
                         asChild
                       >
-                        <a href={`tel:${extra.workerPhone}`}>
+                        <a href={`tel:${job.assignedWorkerPhone}`}>
                           <Phone className="w-4 h-4 mr-2" />
                           Call Worker
                         </a>
@@ -1052,23 +1171,21 @@ function AssignedWorkTab() {
                         </a>
                       </Button>
                     )}
-                    {!isCompleted ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        data-ocid={`assigned.job.complete.button.${idx + 1}`}
-                        onClick={() => handleComplete(job.id.toString())}
-                        className="border-green-500/40 text-green-400 hover:bg-green-500/10 ml-auto"
-                      >
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      data-ocid={`assigned.job.complete.button.${idx + 1}`}
+                      onClick={() => handleComplete(job)}
+                      disabled={completeJob.isPending}
+                      className="border-green-500/40 text-green-400 hover:bg-green-500/10 ml-auto"
+                    >
+                      {completeJob.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
                         <CheckCircle2 className="w-4 h-4 mr-2" />
-                        Mark as Completed
-                      </Button>
-                    ) : (
-                      <div className="flex items-center gap-2 text-green-400 text-sm ml-auto">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Done</span>
-                      </div>
-                    )}
+                      )}
+                      Mark as Completed
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -1083,17 +1200,15 @@ function AssignedWorkTab() {
 // --- Dashboard Tab ---
 function DashboardTab() {
   const { data: allJobs, isLoading } = useGetAllJobPostings();
-  const extras = getExtras();
 
   const stats = useMemo(() => {
     const total = allJobs?.length ?? 0;
     const taken =
-      allJobs?.filter((j) => j.status === JobStatus.taken).length ?? 0;
-    const completed = Object.values(extras).filter(
-      (e) => e.completionStatus === "completed",
-    ).length;
+      allJobs?.filter((j) => j.status === JobStatus.assigned).length ?? 0;
+    const completed =
+      allJobs?.filter((j) => j.status === JobStatus.completed).length ?? 0;
     return { total, taken, completed };
-  }, [allJobs, extras]);
+  }, [allJobs]);
 
   const statsConfig = [
     {
@@ -1184,20 +1299,22 @@ function DashboardTab() {
               .sort((a, b) => Number(b.createdAt - a.createdAt))
               .slice(0, 5)
               .map((job) => {
-                const isCompleted =
-                  extras[job.id.toString()]?.completionStatus === "completed";
                 const statusClass =
-                  job.status === "available"
+                  job.status === JobStatus.available
                     ? "bg-primary/20 text-primary border-primary/30"
-                    : isCompleted
+                    : job.status === JobStatus.completed
                       ? "bg-green-500/20 text-green-400 border-green-500/30"
-                      : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+                      : job.status === JobStatus.deleted
+                        ? "bg-red-500/20 text-red-400 border-red-500/30"
+                        : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
                 const statusLabel =
-                  job.status === "available"
+                  job.status === JobStatus.available
                     ? "Available"
-                    : isCompleted
+                    : job.status === JobStatus.completed
                       ? "Completed"
-                      : "Taken";
+                      : job.status === JobStatus.deleted
+                        ? "Deleted"
+                        : "Assigned";
                 return (
                   <div
                     key={job.id.toString()}
