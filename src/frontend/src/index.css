@@ -1,13 +1,8 @@
-@font-face {
-  font-family: "Bricolage Grotesque";
-  src: url("/assets/fonts/BricolageGrotesque.woff2") format("woff2");
-  font-weight: 200 800;
-  font-display: swap;
-}
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap");
 
 @font-face {
-  font-family: "Satoshi";
-  src: url("/assets/fonts/Satoshi.woff2") format("woff2");
+  font-family: "Plus Jakarta Sans";
+  src: url("/assets/fonts/PlusJakartaSans.woff2") format("woff2");
   font-weight: 300 700;
   font-display: swap;
 }
@@ -18,42 +13,47 @@
 
 @layer base {
   :root {
-    --background: 0.14 0.006 255;
-    --foreground: 0.93 0.008 255;
-    --card: 0.18 0.007 255;
-    --card-foreground: 0.93 0.008 255;
-    --popover: 0.18 0.007 255;
-    --popover-foreground: 0.93 0.008 255;
-    --primary: 0.72 0.19 188;
-    --primary-foreground: 0.1 0.02 188;
-    --secondary: 0.22 0.008 255;
-    --secondary-foreground: 0.85 0.008 255;
-    --muted: 0.22 0.008 255;
-    --muted-foreground: 0.58 0.012 255;
-    --accent: 0.25 0.01 255;
-    --accent-foreground: 0.93 0.008 255;
-    --destructive: 0.62 0.22 25;
-    --destructive-foreground: 0.98 0.005 0;
-    --border: 0.26 0.009 255;
-    --input: 0.24 0.009 255;
-    --ring: 0.72 0.19 188;
-    --radius: 0.5rem;
-    --sidebar: 0.11 0.005 255;
-    --sidebar-foreground: 0.93 0.008 255;
-    --sidebar-primary: 0.72 0.19 188;
-    --sidebar-primary-foreground: 0.1 0.02 188;
-    --sidebar-accent: 0.22 0.008 255;
-    --sidebar-accent-foreground: 0.93 0.008 255;
-    --sidebar-border: 0.2 0.007 255;
-    --sidebar-ring: 0.72 0.19 188;
-    --chart-1: 0.72 0.19 188;
-    --chart-2: 0.74 0.18 145;
-    --chart-3: 0.78 0.16 60;
-    --chart-4: 0.72 0.22 25;
+    /* Light theme - clean professional blue/green/grey */
+    --background: 0.975 0.004 250;
+    --foreground: 0.22 0.012 260;
+    --card: 1 0 0;
+    --card-foreground: 0.22 0.012 260;
+    --popover: 1 0 0;
+    --popover-foreground: 0.22 0.012 260;
+    /* Primary: Blue #2563EB → oklch */
+    --primary: 0.54 0.22 262;
+    --primary-foreground: 1 0 0;
+    /* Secondary: light grey */
+    --secondary: 0.93 0.006 255;
+    --secondary-foreground: 0.35 0.012 260;
+    --muted: 0.95 0.004 255;
+    --muted-foreground: 0.55 0.015 255;
+    /* Accent: Green #16A34A → oklch */
+    --accent: 0.52 0.16 145;
+    --accent-foreground: 1 0 0;
+    --destructive: 0.58 0.22 25;
+    --destructive-foreground: 1 0 0;
+    --border: 0.9 0.006 255;
+    --input: 0.92 0.006 255;
+    --ring: 0.54 0.22 262;
+    --radius: 0.75rem;
+    /* Success green */
+    --success: 0.52 0.16 145;
+    --success-foreground: 1 0 0;
+    /* Sidebar (used for bottom nav bg) */
+    --sidebar: 1 0 0;
+    --sidebar-foreground: 0.22 0.012 260;
+    --sidebar-primary: 0.54 0.22 262;
+    --sidebar-primary-foreground: 1 0 0;
+    --sidebar-accent: 0.95 0.004 255;
+    --sidebar-accent-foreground: 0.22 0.012 260;
+    --sidebar-border: 0.9 0.006 255;
+    --sidebar-ring: 0.54 0.22 262;
+    --chart-1: 0.54 0.22 262;
+    --chart-2: 0.52 0.16 145;
+    --chart-3: 0.72 0.16 75;
+    --chart-4: 0.62 0.22 25;
     --chart-5: 0.65 0.15 300;
-    --priority-high: 0.64 0.22 25;
-    --priority-medium: 0.76 0.16 75;
-    --priority-low: 0.72 0.18 145;
   }
 
   * {
@@ -61,7 +61,7 @@
   }
 
   html {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   body {
@@ -80,48 +80,64 @@
   h6 {
     @apply font-display;
     font-weight: 600;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.01em;
   }
 }
 
 @layer utilities {
-  .priority-high {
-    color: oklch(var(--priority-high));
-    background-color: oklch(var(--priority-high) / 0.12);
-    border-color: oklch(var(--priority-high) / 0.25);
-  }
-  .priority-medium {
-    color: oklch(var(--priority-medium));
-    background-color: oklch(var(--priority-medium) / 0.12);
-    border-color: oklch(var(--priority-medium) / 0.25);
-  }
-  .priority-low {
-    color: oklch(var(--priority-low));
-    background-color: oklch(var(--priority-low) / 0.12);
-    border-color: oklch(var(--priority-low) / 0.25);
-  }
-  .sidebar-active {
-    background-color: oklch(var(--sidebar-accent));
+  .bottom-nav-active {
     color: oklch(var(--primary));
   }
-  .sidebar-active::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 60%;
-    border-radius: 0 3px 3px 0;
+  .bottom-nav-inactive {
+    color: oklch(var(--muted-foreground));
+  }
+  .category-chip-active {
     background-color: oklch(var(--primary));
+    color: white;
+  }
+  .category-chip-inactive {
+    background-color: oklch(var(--muted));
+    color: oklch(var(--muted-foreground));
+  }
+  .worker-card {
+    background: oklch(var(--card));
+    border-radius: 1.25rem;
+    box-shadow: 0 1px 8px oklch(var(--foreground) / 0.06);
+  }
+  .skill-badge {
+    background-color: oklch(var(--accent) / 0.12);
+    color: oklch(var(--accent));
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 10px;
   }
   .glass-card {
-    background: oklch(var(--card) / 0.8);
+    background: oklch(var(--card) / 0.9);
     backdrop-filter: blur(12px);
-    border: 1px solid oklch(var(--border) / 0.6);
+    border: 1px solid oklch(var(--border));
   }
   .stat-glow {
     box-shadow: 0 0 20px oklch(var(--primary) / 0.1), inset 0 1px 0
       oklch(var(--primary) / 0.1);
+  }
+  .priority-high {
+    color: oklch(0.62 0.22 25);
+    background-color: oklch(0.62 0.22 25 / 0.12);
+    border-color: oklch(0.62 0.22 25 / 0.25);
+  }
+  .priority-medium {
+    color: oklch(0.72 0.16 75);
+    background-color: oklch(0.72 0.16 75 / 0.12);
+    border-color: oklch(0.72 0.16 75 / 0.25);
+  }
+  .priority-low {
+    color: oklch(0.52 0.16 145);
+    background-color: oklch(0.52 0.16 145 / 0.12);
+    border-color: oklch(0.52 0.16 145 / 0.25);
+  }
+  .sidebar-active {
+    background-color: oklch(var(--primary) / 0.08);
+    color: oklch(var(--primary));
   }
 }

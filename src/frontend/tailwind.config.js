@@ -16,8 +16,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        display: ['Bricolage Grotesque', 'system-ui', 'sans-serif'],
-        body: ['Satoshi', 'system-ui', 'sans-serif'],
+        display: ['Poppins', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        body: ['Poppins', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
       colors: {
@@ -45,6 +45,10 @@ export default {
         accent: {
           DEFAULT: "oklch(var(--accent) / <alpha-value>)",
           foreground: "oklch(var(--accent-foreground))",
+        },
+        success: {
+          DEFAULT: "oklch(var(--success) / <alpha-value>)",
+          foreground: "oklch(var(--success-foreground))",
         },
         popover: {
           DEFAULT: "oklch(var(--popover))",
@@ -78,8 +82,9 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       boxShadow: {
-        xs: "0 1px 2px 0 rgba(0,0,0,0.05)",
-        glow: "0 0 24px oklch(0.72 0.19 188 / 0.18)",
+        xs: "0 1px 2px 0 rgba(0,0,0,0.04)",
+        card: "0 1px 8px oklch(0.22 0.012 260 / 0.06)",
+        glow: "0 0 24px oklch(0.54 0.22 262 / 0.18)",
       },
       keyframes: {
         "accordion-down": {
@@ -94,11 +99,16 @@ export default {
           from: { opacity: "0", transform: "translateY(8px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
+        shimmer: {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "fade-in": "fade-in 0.3s ease-out forwards",
+        shimmer: "shimmer 1.5s infinite linear",
       },
     },
   },

@@ -7,9 +7,6 @@ import Order "mo:core/Order";
 import Nat "mo:core/Nat";
 import Float "mo:core/Float";
 
-
-// Use migration helper on upgrade
-
 actor {
   // TASKS
 
@@ -623,5 +620,244 @@ actor {
   public shared ({ caller }) func deleteNotification(id : NotificationId) : async () {
     if (not notifications.containsKey(id)) { Runtime.trap("Notification not found") };
     notifications.remove(id);
+  };
+
+  /////////////////////////////////////
+  // ** NEW MODULES BELOW **
+
+  // JOB VACANCIES
+
+  type JobVacancyId = Nat;
+  type JobVacancyStatus = {
+    #open;
+    #closed;
+  };
+
+  type JobVacancy = {
+    id : JobVacancyId;
+    title : Text;
+    companyName : Text;
+    category : Text;
+    salary : ?Text;
+    location : Text;
+    description : Text;
+    status : JobVacancyStatus;
+    postedAt : Time.Time;
+  };
+
+  let jobVacancies = Map.empty<JobVacancyId, JobVacancy>();
+  var nextVacancyId = 0;
+
+  public shared ({ caller }) func createJobVacancy(title : Text, companyName : Text, category : Text, salary : ?Text, location : Text, description : Text) : async JobVacancyId {
+    let id = nextVacancyId;
+    let vacancy : JobVacancy = {
+      id;
+      title;
+      companyName;
+      category;
+      salary;
+      location;
+      description;
+      status = #open;
+      postedAt = Time.now();
+    };
+    jobVacancies.add(id, vacancy);
+    nextVacancyId += 1;
+    id;
+  };
+
+  public query ({ caller }) func getOpenJobVacancies() : async [JobVacancy] {
+    jobVacancies.values().toArray().filter(
+      func(vacancy) {
+        vacancy.status == #open;
+      }
+    );
+  };
+
+  public query ({ caller }) func getAllJobVacancies() : async [JobVacancy] {
+    jobVacancies.values().toArray();
+  };
+
+  public query ({ caller }) func getJobVacanciesByCategory(category : Text) : async [JobVacancy] {
+    jobVacancies.values().toArray().filter(
+      func(vacancy) {
+        vacancy.category == category;
+      }
+    );
+  };
+
+  public query ({ caller }) func getJobVacanciesByLocation(location : Text) : async [JobVacancy] {
+    jobVacancies.values().toArray().filter(
+      func(vacancy) {
+        vacancy.location == location;
+      }
+    );
+  };
+
+  public shared ({ caller }) func closeJobVacancy(id : JobVacancyId) : async () {
+    switch (jobVacancies.get(id)) {
+      case (null) { Runtime.trap("Job vacancy not found") };
+      case (?vacancy) {
+        let updated : JobVacancy = {
+          id = vacancy.id;
+          title = vacancy.title;
+          companyName = vacancy.companyName;
+          category = vacancy.category;
+          salary = vacancy.salary;
+          location = vacancy.location;
+          description = vacancy.description;
+          status = #closed;
+          postedAt = vacancy.postedAt;
+        };
+        jobVacancies.add(id, updated);
+      };
+    };
+  };
+
+  public shared ({ caller }) func deleteJobVacancy(id : JobVacancyId) : async () {
+    if (not jobVacancies.containsKey(id)) {
+      Runtime.trap("Job vacancy not found");
+    };
+    jobVacancies.remove(id);
+  };
+
+  // JOB APPLICATIONS
+
+  type JobApplicationId = Nat;
+
+  type JobApplication = {
+    id : JobApplicationId;
+    vacancyId : JobVacancyId;
+    applicantName : Text;
+    applicantPhone : Text;
+    appliedAt : Time.Time;
+  };
+
+  let jobApplications = Map.empty<JobApplicationId, JobApplication>();
+  var nextApplicationId = 0;
+
+  public shared ({ caller }) func applyToVacancy(vacancyId : JobVacancyId, applicantName : Text, applicantPhone : Text) : async JobApplicationId {
+    switch (jobVacancies.get(vacancyId)) {
+      case (null) {
+        Runtime.trap("Job vacancy not found");
+      };
+      case (?vacancy) {
+        if (vacancy.status == #closed) {
+          Runtime.trap("Cannot apply to a closed vacancy");
+        };
+      };
+    };
+
+    let id = nextApplicationId;
+    let application : JobApplication = {
+      id;
+      vacancyId;
+      applicantName;
+      applicantPhone;
+      appliedAt = Time.now();
+    };
+    jobApplications.add(id, application);
+    nextApplicationId += 1;
+    id;
+  };
+
+  public query ({ caller }) func getApplicationsForVacancy(vacancyId : JobVacancyId) : async [JobApplication] {
+    jobApplications.values().toArray().filter(
+      func(app) {
+        app.vacancyId == vacancyId;
+      }
+    );
+  };
+
+  // RENTAL PROPERTIES
+
+  type RentalPropertyId = Nat;
+
+  type RentalStatus = {
+    #available;
+    #rented;
+  };
+
+  type RentalProperty = {
+    id : RentalPropertyId;
+    title : Text;
+    description : Text;
+    location : Text;
+    pricePerMonth : Float;
+    numberOfRooms : Nat;
+    contactPhone : Text;
+    ownerName : Text;
+    status : RentalStatus;
+    createdAt : Time.Time;
+  };
+
+  let rentals = Map.empty<RentalPropertyId, RentalProperty>();
+  var nextRentalId = 0;
+
+  public shared ({ caller }) func createRentalProperty(title : Text, description : Text, location : Text, pricePerMonth : Float, numberOfRooms : Nat, contactPhone : Text, ownerName : Text) : async RentalPropertyId {
+    let id = nextRentalId;
+    let property : RentalProperty = {
+      id;
+      title;
+      description;
+      location;
+      pricePerMonth;
+      numberOfRooms;
+      contactPhone;
+      ownerName;
+      status = #available;
+      createdAt = Time.now();
+    };
+    rentals.add(id, property);
+    nextRentalId += 1;
+    id;
+  };
+
+  public query ({ caller }) func getAvailableRentals() : async [RentalProperty] {
+    rentals.values().toArray().filter(
+      func(rental) {
+        rental.status == #available;
+      }
+    );
+  };
+
+  public query ({ caller }) func getAllRentals() : async [RentalProperty] {
+    rentals.values().toArray();
+  };
+
+  public query ({ caller }) func getRentalsByLocation(location : Text) : async [RentalProperty] {
+    rentals.values().toArray().filter(
+      func(rental) {
+        rental.location == location;
+      }
+    );
+  };
+
+  public shared ({ caller }) func updateRentalStatus(id : RentalPropertyId, status : RentalStatus) : async () {
+    switch (rentals.get(id)) {
+      case (null) { Runtime.trap("Rental property not found") };
+      case (?rental) {
+        let updated : RentalProperty = {
+          id = rental.id;
+          title = rental.title;
+          description = rental.description;
+          location = rental.location;
+          pricePerMonth = rental.pricePerMonth;
+          numberOfRooms = rental.numberOfRooms;
+          contactPhone = rental.contactPhone;
+          ownerName = rental.ownerName;
+          status;
+          createdAt = rental.createdAt;
+        };
+        rentals.add(id, updated);
+      };
+    };
+  };
+
+  public shared ({ caller }) func deleteRentalProperty(id : RentalPropertyId) : async () {
+    if (not rentals.containsKey(id)) {
+      Runtime.trap("Rental property not found");
+    };
+    rentals.remove(id);
   };
 };

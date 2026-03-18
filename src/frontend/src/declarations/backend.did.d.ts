@@ -17,6 +17,14 @@ export type DayOfWeek = { 'tuesday' : null } |
   { 'sunday' : null } |
   { 'friday' : null } |
   { 'monday' : null };
+export interface JobApplication {
+  'id' : JobApplicationId,
+  'appliedAt' : Time,
+  'applicantName' : string,
+  'applicantPhone' : string,
+  'vacancyId' : JobVacancyId,
+}
+export type JobApplicationId = bigint;
 export interface JobPosting {
   'id' : JobPostingId,
   'startTime' : bigint,
@@ -37,6 +45,20 @@ export type JobStatus = { 'assigned' : null } |
   { 'deleted' : null } |
   { 'completed' : null } |
   { 'available' : null };
+export interface JobVacancy {
+  'id' : JobVacancyId,
+  'status' : JobVacancyStatus,
+  'title' : string,
+  'postedAt' : Time,
+  'salary' : [] | [string],
+  'description' : string,
+  'companyName' : string,
+  'category' : string,
+  'location' : string,
+}
+export type JobVacancyId = bigint;
+export type JobVacancyStatus = { 'closed' : null } |
+  { 'open' : null };
 export interface Note {
   'id' : NoteId,
   'title' : string,
@@ -57,6 +79,21 @@ export type NotificationId = bigint;
 export type Priority = { 'low' : null } |
   { 'high' : null } |
   { 'medium' : null };
+export interface RentalProperty {
+  'id' : RentalPropertyId,
+  'status' : RentalStatus,
+  'title' : string,
+  'ownerName' : string,
+  'createdAt' : Time,
+  'numberOfRooms' : bigint,
+  'description' : string,
+  'pricePerMonth' : number,
+  'location' : string,
+  'contactPhone' : string,
+}
+export type RentalPropertyId = bigint;
+export type RentalStatus = { 'rented' : null } |
+  { 'available' : null };
 export interface ScheduleEntry {
   'id' : ScheduleId,
   'startTime' : bigint,
@@ -90,19 +127,32 @@ export interface WorkEntry {
 }
 export type WorkEntryId = bigint;
 export interface _SERVICE {
+  'applyToVacancy' : ActorMethod<
+    [JobVacancyId, string, string],
+    JobApplicationId
+  >,
   'assignJobPosting' : ActorMethod<
     [JobPostingId, string, string, string],
     boolean
   >,
+  'closeJobVacancy' : ActorMethod<[JobVacancyId], undefined>,
   'completeJobPosting' : ActorMethod<[JobPostingId], boolean>,
   'createJobPosting' : ActorMethod<
     [string, string, string, bigint, bigint, number, string],
     JobPostingId
   >,
+  'createJobVacancy' : ActorMethod<
+    [string, string, string, [] | [string], string, string],
+    JobVacancyId
+  >,
   'createNote' : ActorMethod<[string, string], NoteId>,
   'createNotification' : ActorMethod<
     [string, string, string, bigint],
     NotificationId
+  >,
+  'createRentalProperty' : ActorMethod<
+    [string, string, string, number, bigint, string, string],
+    RentalPropertyId
   >,
   'createScheduleEntry' : ActorMethod<
     [string, DayOfWeek, bigint, bigint, string],
@@ -114,20 +164,35 @@ export interface _SERVICE {
     WorkEntryId
   >,
   'deleteJobPosting' : ActorMethod<[JobPostingId], undefined>,
+  'deleteJobVacancy' : ActorMethod<[JobVacancyId], undefined>,
   'deleteNote' : ActorMethod<[NoteId], undefined>,
   'deleteNotification' : ActorMethod<[NotificationId], undefined>,
+  'deleteRentalProperty' : ActorMethod<[RentalPropertyId], undefined>,
   'deleteScheduleEntry' : ActorMethod<[ScheduleId], undefined>,
   'deleteTask' : ActorMethod<[TaskId], undefined>,
   'deleteWorkEntry' : ActorMethod<[WorkEntryId], undefined>,
   'getAllJobPostings' : ActorMethod<[], Array<JobPosting>>,
+  'getAllJobVacancies' : ActorMethod<[], Array<JobVacancy>>,
   'getAllNotes' : ActorMethod<[], Array<Note>>,
   'getAllNotifications' : ActorMethod<[], Array<Notification>>,
+  'getAllRentals' : ActorMethod<[], Array<RentalProperty>>,
   'getAllScheduleEntries' : ActorMethod<[], Array<ScheduleEntry>>,
   'getAllTasks' : ActorMethod<[], Array<Task>>,
   'getAllWorkEntries' : ActorMethod<[], Array<WorkEntry>>,
+  'getApplicationsForVacancy' : ActorMethod<
+    [JobVacancyId],
+    Array<JobApplication>
+  >,
   'getAssignedJobPostings' : ActorMethod<[], Array<JobPosting>>,
   'getAvailableJobPostings' : ActorMethod<[], Array<JobPosting>>,
+  'getAvailableJobPostingsForWorker' : ActorMethod<[string], Array<JobPosting>>,
+  'getAvailableRentals' : ActorMethod<[], Array<RentalProperty>>,
+  'getJobVacanciesByCategory' : ActorMethod<[string], Array<JobVacancy>>,
+  'getJobVacanciesByLocation' : ActorMethod<[string], Array<JobVacancy>>,
+  'getNotInterestedJobIds' : ActorMethod<[string], Array<JobPostingId>>,
   'getNote' : ActorMethod<[NoteId], Note>,
+  'getOpenJobVacancies' : ActorMethod<[], Array<JobVacancy>>,
+  'getRentalsByLocation' : ActorMethod<[string], Array<RentalProperty>>,
   'getScheduleEntry' : ActorMethod<[ScheduleId], ScheduleEntry>,
   'getTask' : ActorMethod<[TaskId], Task>,
   'getUnreadCount' : ActorMethod<[], bigint>,
@@ -137,7 +202,12 @@ export interface _SERVICE {
   'getWorkEntry' : ActorMethod<[WorkEntryId], WorkEntry>,
   'markAllNotificationsRead' : ActorMethod<[], undefined>,
   'markNotificationRead' : ActorMethod<[NotificationId], undefined>,
+  'setJobPreference' : ActorMethod<[string, JobPostingId, boolean], undefined>,
   'updateNote' : ActorMethod<[NoteId, string, string], undefined>,
+  'updateRentalStatus' : ActorMethod<
+    [RentalPropertyId, RentalStatus],
+    undefined
+  >,
   'updateScheduleEntry' : ActorMethod<
     [ScheduleId, string, DayOfWeek, bigint, bigint, string],
     undefined
