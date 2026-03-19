@@ -12,15 +12,23 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import NotificationBell from "./components/NotificationBell";
+import {
+  type UserSession,
+  clearSession,
+  getSession,
+} from "./hooks/useWorkerQueries";
 import { requestNotificationPermission } from "./lib/browserNotifications";
 import AddWorkPage from "./pages/AddWorkPage";
+import AdminWorkersPage from "./pages/AdminWorkersPage";
 import BookingsPage from "./pages/BookingsPage";
 import DailyWork from "./pages/DailyWork";
 import HomePage from "./pages/Home";
 import JobBoard from "./pages/JobBoard";
 import JobsPage from "./pages/JobsPage";
+import LoginScreen from "./pages/LoginScreen";
 import NotificationsPage from "./pages/Notifications";
 import ProfilePage from "./pages/ProfilePage";
+import RegisterScreen from "./pages/RegisterScreen";
 import RentalsPage from "./pages/RentalsPage";
 import Reports from "./pages/Reports";
 import WorkersPage from "./pages/Workers";
@@ -35,8 +43,10 @@ type DeepPage =
   | "reports"
   | "notifications"
   | "addwork"
-  | "messages";
+  | "messages"
+  | "adminworkers";
 type Page = BottomTab | DeepPage;
+type AuthScreen = "login" | "register";
 
 const BOTTOM_TABS: {
   id: BottomTab;
@@ -59,6 +69,10 @@ const BOTTOM_TAB_IDS: BottomTab[] = [
 ];
 
 function AppLayout() {
+  const [session, setSession] = useState<UserSession | null>(() =>
+    getSession(),
+  );
+  const [authScreen, setAuthScreen] = useState<AuthScreen>("login");
   const [page, setPage] = useState<Page>("home");
   const [prefillCategory, setPrefillCategory] = useState("");
 
@@ -68,6 +82,19 @@ function AppLayout() {
 
   const navigate = (p: Page) => setPage(p);
 
+  const handleLoginSuccess = (s: UserSession) => {
+    setSession(s);
+    if (s.role === "admin") setPage("profile");
+    else setPage("home");
+  };
+
+  const handleLogout = () => {
+    clearSession();
+    setSession(null);
+    setAuthScreen("login");
+    setPage("home");
+  };
+
   const activeTab: BottomTab = BOTTOM_TAB_IDS.includes(page as BottomTab)
     ? (page as BottomTab)
     : "home";
@@ -76,6 +103,44 @@ function AppLayout() {
     setPrefillCategory(skill);
     setPage("addwork");
   };
+
+  // Show auth screens if no session
+  if (!session) {
+    return (
+      <div className="max-w-lg mx-auto relative">
+        <Toaster richColors position="top-center" />
+        <AnimatePresence mode="wait">
+          {authScreen === "login" ? (
+            <motion.div
+              key="login"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.2 }}
+            >
+              <LoginScreen
+                onLoginSuccess={handleLoginSuccess}
+                onGoToRegister={() => setAuthScreen("register")}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="register"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              <RegisterScreen
+                onRegisterSuccess={handleLoginSuccess}
+                onGoToLogin={() => setAuthScreen("login")}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden max-w-lg mx-auto relative">
@@ -119,7 +184,11 @@ function AppLayout() {
             {page === "rentals" && <RentalsPage />}
             {page === "bookings" && <BookingsPage />}
             {page === "profile" && (
-              <ProfilePage onNavigate={(p) => navigate(p)} />
+              <ProfilePage
+                onNavigate={(p) => navigate(p)}
+                session={session}
+                onLogout={handleLogout}
+              />
             )}
             {page === "addwork" && (
               <AddWorkPage prefillCategory={prefillCategory} />
@@ -129,6 +198,7 @@ function AppLayout() {
             {page === "dailywork" && <DailyWork />}
             {page === "reports" && <Reports />}
             {page === "notifications" && <NotificationsPage />}
+            {page === "adminworkers" && <AdminWorkersPage />}
           </motion.div>
         </AnimatePresence>
       </main>

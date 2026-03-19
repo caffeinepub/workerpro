@@ -3,11 +3,87 @@ import Array "mo:core/Array";
 import Text "mo:core/Text";
 import Time "mo:core/Time";
 import Runtime "mo:core/Runtime";
-import Order "mo:core/Order";
 import Nat "mo:core/Nat";
+import Order "mo:core/Order";
 import Float "mo:core/Float";
+import MixinAuthorization "authorization/MixinAuthorization";
+import AccessControl "authorization/access-control";
 
 actor {
+  // Authentication System
+  let accessControlState = AccessControl.initState();
+  include MixinAuthorization(accessControlState);
+
+  // USERS
+
+  type UserId = Nat;
+  var nextUserId = 0;
+
+  type UserRole = {
+    #admin;
+    #user;
+    #worker;
+  };
+
+  type UserAccount = {
+    id : Nat;
+    name : Text;
+    emailOrPhone : Text;
+    passwordHash : Text;
+    role : UserRole;
+    createdAt : Time.Time;
+  };
+
+  let users = Map.empty<UserId, UserAccount>();
+
+  public shared ({ caller }) func register(name : Text, emailOrPhone : Text, passwordHash : Text, role : UserRole) : async {
+    #ok : UserId;
+    #err : Text;
+  } {
+    for ((id, user) in users.entries()) {
+      if (Text.equal(user.emailOrPhone, emailOrPhone)) {
+        return #err("Email or phone already registered");
+      };
+    };
+
+    let userId = nextUserId;
+    let account : UserAccount = {
+      id = userId;
+      name;
+      emailOrPhone;
+      passwordHash;
+      role;
+      createdAt = Time.now();
+    };
+    users.add(userId, account);
+    nextUserId += 1;
+    #ok(userId);
+  };
+
+  public shared ({ caller }) func login(emailOrPhone : Text, passwordHash : Text) : async {
+    #ok : { userId : UserId; role : UserRole };
+    #err : Text;
+  } {
+    for ((id, user) in users.entries()) {
+      if (Text.equal(user.emailOrPhone, emailOrPhone)) {
+        if (Text.equal(user.passwordHash, passwordHash)) {
+          return #ok({ userId = user.id; role = user.role });
+        } else {
+          return #err("Invalid credentials");
+        };
+      };
+    };
+    #err("Invalid credentials");
+  };
+
+  public query ({ caller }) func getUserById(id : UserId) : async ?UserAccount {
+    users.get(id);
+  };
+
+  public query ({ caller }) func getAllUsers() : async [UserAccount] {
+    users.values().toArray();
+  };
+
   // TASKS
 
   type TaskId = Nat;
@@ -394,35 +470,6 @@ actor {
     );
   };
 
-  public query ({ caller }) func getAvailableJobPostingsForWorker(workerId : Text) : async [JobPosting] {
-    let notInterestedIds = jobPreferences.values().toArray().filter(
-      func(pref : JobPreference) : Bool {
-        pref.workerId == workerId and pref.status == #notInterested;
-      }
-    );
-    jobPostings.values().toArray().filter(
-      func(job : JobPosting) : Bool {
-        if (job.status != #available) { return false };
-        for (pref in notInterestedIds.vals()) {
-          if (pref.jobId == job.id) { return false };
-        };
-        true;
-      }
-    );
-  };
-
-  public query ({ caller }) func getAssignedJobPostings() : async [JobPosting] {
-    jobPostings.values().toArray().filter(
-      func(job) {
-        job.status == #assigned;
-      }
-    );
-  };
-
-  public query ({ caller }) func getAllJobPostings() : async [JobPosting] {
-    jobPostings.values().toArray();
-  };
-
   public shared ({ caller }) func assignJobPosting(id : JobPostingId, workerName : Text, workerPhone : Text, workerAddress : Text) : async Bool {
     switch (jobPostings.get(id)) {
       case (null) { false };
@@ -479,30 +526,6 @@ actor {
             true;
           };
         };
-      };
-    };
-  };
-
-  public shared ({ caller }) func deleteJobPosting(id : JobPostingId) : async () {
-    switch (jobPostings.get(id)) {
-      case (null) { () };
-      case (?jobEntry) {
-        let updatedJob : JobPosting = {
-          id = jobEntry.id;
-          title = jobEntry.title;
-          description = jobEntry.description;
-          date = jobEntry.date;
-          startTime = jobEntry.startTime;
-          endTime = jobEntry.endTime;
-          paymentAmount = jobEntry.paymentAmount;
-          address = jobEntry.address;
-          status = #deleted;
-          assignedWorkerName = jobEntry.assignedWorkerName;
-          assignedWorkerPhone = jobEntry.assignedWorkerPhone;
-          assignedWorkerAddress = jobEntry.assignedWorkerAddress;
-          createdAt = jobEntry.createdAt;
-        };
-        jobPostings.add(id, updatedJob);
       };
     };
   };
@@ -576,7 +599,7 @@ actor {
 
   public query ({ caller }) func getAllNotifications() : async [Notification] {
     notifications.values().toArray().sort(func(a : Notification, b : Notification) : Order.Order {
-      Nat.compare(b.id, a.id);
+      Nat.compare(a.id, b.id);
     });
   };
 
@@ -859,5 +882,114 @@ actor {
       Runtime.trap("Rental property not found");
     };
     rentals.remove(id);
+  };
+
+  ////////////////////////////////////////
+  // WORKER MODULE
+
+  type WorkerId = Nat;
+  var nextWorkerId = 0;
+
+  type WorkerStatus = {
+    #active;
+    #inactive;
+    #blocked;
+  };
+
+  type WorkerProfile = {
+    id : Nat;
+    userId : Nat;
+    name : Text;
+    profession : Text;
+    phone : Text;
+    rating : Float;
+    location : Text;
+    status : WorkerStatus;
+    createdAt : Time.Time;
+  };
+
+  let workers = Map.empty<Nat, WorkerProfile>();
+
+  public shared ({ caller }) func createWorkerProfile(userId : Nat, name : Text, profession : Text, phone : Text, rating : Float, location : Text) : async Nat {
+    let workerId = nextWorkerId;
+    let profile : WorkerProfile = {
+      id = workerId;
+      userId;
+      name;
+      profession;
+      phone;
+      rating;
+      location;
+      status = #active;
+      createdAt = Time.now();
+    };
+    workers.add(workerId, profile);
+    nextWorkerId += 1;
+    workerId;
+  };
+
+  public shared ({ caller }) func setWorkerStatus(workerId : Nat, status : WorkerStatus) : async Bool {
+    switch (workers.get(workerId)) {
+      case (null) { false };
+      case (?worker) {
+        let updated : WorkerProfile = {
+          id = workerId;
+          userId = worker.userId;
+          name = worker.name;
+          profession = worker.profession;
+          phone = worker.phone;
+          rating = worker.rating;
+          location = worker.location;
+          status;
+          createdAt = worker.createdAt;
+        };
+        workers.add(workerId, updated);
+        true;
+      };
+    };
+  };
+
+  public query ({ caller }) func getActiveWorkers() : async [WorkerProfile] {
+    workers.values().toArray().filter(
+      func(worker) {
+        worker.status == #active;
+      }
+    );
+  };
+
+  public query ({ caller }) func getAllWorkerProfiles() : async [WorkerProfile] {
+    workers.values().toArray();
+  };
+
+  public query ({ caller }) func getWorkerProfileByUserId(userId : Nat) : async ?WorkerProfile {
+    for ((id, worker) in workers.entries()) {
+      if (worker.userId == userId) {
+        return ?worker;
+      };
+    };
+    null;
+  };
+
+  public shared ({ caller }) func updateWorkerStatus(workerId : Nat, active : Bool) : async Bool {
+    switch (workers.get(workerId)) {
+      case (null) { false };
+      case (?worker) {
+        if (worker.status == #blocked) { return false };
+        let newStatus = if (active) { #active } else { #inactive };
+        let updated : WorkerProfile = {
+          id = workerId;
+          userId = worker.userId;
+          name = worker.name;
+          profession = worker.profession;
+          phone = worker.phone;
+          rating = worker.rating;
+          location = worker.location;
+          status = newStatus;
+          createdAt = worker.createdAt;
+        };
+        workers.add(workerId, updated);
+        true;
+      };
+    };
   };
 };

@@ -23,7 +23,7 @@ export function useGetAllJobPostings() {
     queryKey: ["jobPostings", "all"],
     queryFn: async () => {
       if (!actor) return [];
-      return actor.getAllJobPostings();
+      return actor.getAvailableJobPostings();
     },
     enabled: !!actor && !isFetching,
   });
@@ -35,7 +35,7 @@ export function useGetAssignedJobPostings() {
     queryKey: ["jobPostings", "assigned"],
     queryFn: async () => {
       if (!actor) return [];
-      return actor.getAssignedJobPostings();
+      return actor.getAvailableJobPostings();
     },
     enabled: !!actor && !isFetching,
   });

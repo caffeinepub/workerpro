@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
-import { getWorkers } from "./Workers";
+import { useGetActiveWorkers } from "../hooks/useWorkerQueries";
 
 const SERVICE_CATEGORIES = [
   {
@@ -120,71 +120,71 @@ interface HomeProps {
 export default function HomePage({ onBookWorker }: HomeProps) {
   const [activeCategory, setActiveCategory] = useState("all");
   const [search, setSearch] = useState("");
-  const [isLoading] = useState(false);
 
-  const allWorkers = getWorkers();
+  const { data: activeWorkers = [], isLoading } = useGetActiveWorkers();
 
+  // Fallback sample data shown only when no backend workers yet
   const sampleWorkers = [
     {
-      id: "s1",
+      id: BigInt(1),
       name: "Ramesh Kumar",
-      skill: "Electrician",
+      profession: "Electrician",
       phone: "9876543210",
-      address: "Koramangala, Bangalore",
-      createdAt: Date.now(),
+      location: "Koramangala, Bangalore",
+      rating: 4.8,
     },
     {
-      id: "s2",
+      id: BigInt(2),
       name: "Suresh Patel",
-      skill: "Plumber",
+      profession: "Plumber",
       phone: "9876543211",
-      address: "Indiranagar, Bangalore",
-      createdAt: Date.now(),
+      location: "Indiranagar, Bangalore",
+      rating: 4.6,
     },
     {
-      id: "s3",
+      id: BigInt(3),
       name: "Priya Singh",
-      skill: "Cleaner",
+      profession: "Cleaner",
       phone: "9876543212",
-      address: "HSR Layout, Bangalore",
-      createdAt: Date.now(),
+      location: "HSR Layout, Bangalore",
+      rating: 4.9,
     },
     {
-      id: "s4",
+      id: BigInt(4),
       name: "Anil Sharma",
-      skill: "Carpenter",
+      profession: "Carpenter",
       phone: "9876543213",
-      address: "Whitefield, Bangalore",
-      createdAt: Date.now(),
+      location: "Whitefield, Bangalore",
+      rating: 4.5,
     },
     {
-      id: "s5",
+      id: BigInt(5),
       name: "Mohan Das",
-      skill: "Painter",
+      profession: "Painter",
       phone: "9876543214",
-      address: "BTM Layout, Bangalore",
-      createdAt: Date.now(),
+      location: "BTM Layout, Bangalore",
+      rating: 4.7,
     },
     {
-      id: "s6",
+      id: BigInt(6),
       name: "Kavita Rao",
-      skill: "Cleaner",
+      profession: "Cleaner",
       phone: "9876543215",
-      address: "Marathahalli, Bangalore",
-      createdAt: Date.now(),
+      location: "Marathahalli, Bangalore",
+      rating: 4.4,
     },
   ];
 
-  const workers = allWorkers.length > 0 ? allWorkers : sampleWorkers;
+  const workers = activeWorkers.length > 0 ? activeWorkers : sampleWorkers;
 
   const filtered = workers.filter((w) => {
-    const skill = w.skill.toLowerCase();
+    const profession = w.profession.toLowerCase();
     const matchesCategory =
-      activeCategory === "all" || skill.includes(activeCategory);
+      activeCategory === "all" || profession.includes(activeCategory);
     const matchesSearch =
       !search ||
       w.name.toLowerCase().includes(search.toLowerCase()) ||
-      skill.includes(search.toLowerCase());
+      profession.includes(search.toLowerCase());
     return matchesCategory && matchesSearch;
   });
 
@@ -267,7 +267,7 @@ export default function HomePage({ onBookWorker }: HomeProps) {
       <div className="px-5 flex-1">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-base font-semibold text-foreground">
-            Nearby Workers
+            {activeWorkers.length > 0 ? "Active Workers" : "Nearby Workers"}
           </h2>
           <button
             data-ocid="home.see_all.button"
@@ -305,10 +305,9 @@ export default function HomePage({ onBookWorker }: HomeProps) {
             {filtered.map((worker, i) => {
               const colorClass = AVATAR_COLORS[i % AVATAR_COLORS.length];
               const distance = DISTANCES[i % DISTANCES.length];
-              const rating = 4.5;
               return (
                 <motion.div
-                  key={worker.id}
+                  key={worker.id.toString()}
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.06 }}
@@ -326,10 +325,10 @@ export default function HomePage({ onBookWorker }: HomeProps) {
                         {worker.name}
                       </p>
                       <span className="skill-badge mt-1 inline-block">
-                        {worker.skill || "Worker"}
+                        {worker.profession || "Worker"}
                       </span>
                     </div>
-                    <StarRating rating={rating} />
+                    <StarRating rating={worker.rating || 4.5} />
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <MapPin className="w-3 h-3" />
                       <span>{distance} away</span>
@@ -338,7 +337,7 @@ export default function HomePage({ onBookWorker }: HomeProps) {
                   <button
                     type="button"
                     data-ocid={`home.book_now.button.${i + 1}`}
-                    onClick={() => onBookWorker(worker.skill || "")}
+                    onClick={() => onBookWorker(worker.profession || "")}
                     className="w-full py-2 rounded-full bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-colors"
                   >
                     Book Now

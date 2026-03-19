@@ -7,35 +7,8 @@ export interface None {
     __kind__: "None";
 }
 export type Option<T> = Some<T> | None;
-export interface Note {
-    id: NoteId;
-    title: string;
-    body: string;
-    timestamp: Time;
-}
-export type NoteId = bigint;
-export interface WorkEntry {
-    id: WorkEntryId;
-    startTime: bigint;
-    workType: string;
-    dailyPayment: number;
-    endTime: bigint;
-    date: string;
-    hoursWorked: number;
-    createdAt: Time;
-    notes: string;
-    workerName: string;
-}
-export type Time = bigint;
-export interface ScheduleEntry {
-    id: ScheduleId;
-    startTime: bigint;
-    title: string;
-    endTime: bigint;
-    dayOfWeek: DayOfWeek;
-    notes: string;
-}
 export type JobVacancyId = bigint;
+export type Time = bigint;
 export interface Task {
     id: TaskId;
     title: string;
@@ -44,16 +17,20 @@ export interface Task {
     description: string;
     priority: Priority;
 }
-export interface JobVacancy {
-    id: JobVacancyId;
-    status: JobVacancyStatus;
-    title: string;
-    postedAt: Time;
-    salary?: string;
-    description: string;
-    companyName: string;
-    category: string;
-    location: string;
+export interface JobApplication {
+    id: JobApplicationId;
+    appliedAt: Time;
+    applicantName: string;
+    applicantPhone: string;
+    vacancyId: JobVacancyId;
+}
+export interface UserAccount {
+    id: bigint;
+    emailOrPhone: string;
+    name: string;
+    createdAt: Time;
+    role: UserRole;
+    passwordHash: string;
 }
 export interface JobPosting {
     id: JobPostingId;
@@ -70,29 +47,15 @@ export interface JobPosting {
     assignedWorkerName: string;
     paymentAmount: number;
 }
-export type JobApplicationId = bigint;
-export interface JobApplication {
-    id: JobApplicationId;
-    appliedAt: Time;
-    applicantName: string;
-    applicantPhone: string;
-    vacancyId: JobVacancyId;
-}
 export type RentalPropertyId = bigint;
 export type WorkEntryId = bigint;
-export type ScheduleId = bigint;
-export type TaskId = bigint;
-export type NotificationId = bigint;
-export interface Notification {
-    id: NotificationId;
+export type JobPostingId = bigint;
+export interface Note {
+    id: NoteId;
     title: string;
-    notificationType: string;
-    jobId: bigint;
-    isRead: boolean;
-    message: string;
+    body: string;
     timestamp: Time;
 }
-export type JobPostingId = bigint;
 export interface RentalProperty {
     id: RentalPropertyId;
     status: RentalStatus;
@@ -104,6 +67,63 @@ export interface RentalProperty {
     pricePerMonth: number;
     location: string;
     contactPhone: string;
+}
+export type NoteId = bigint;
+export interface WorkEntry {
+    id: WorkEntryId;
+    startTime: bigint;
+    workType: string;
+    dailyPayment: number;
+    endTime: bigint;
+    date: string;
+    hoursWorked: number;
+    createdAt: Time;
+    notes: string;
+    workerName: string;
+}
+export type JobApplicationId = bigint;
+export interface JobVacancy {
+    id: JobVacancyId;
+    status: JobVacancyStatus;
+    title: string;
+    postedAt: Time;
+    salary?: string;
+    description: string;
+    companyName: string;
+    category: string;
+    location: string;
+}
+export interface ScheduleEntry {
+    id: ScheduleId;
+    startTime: bigint;
+    title: string;
+    endTime: bigint;
+    dayOfWeek: DayOfWeek;
+    notes: string;
+}
+export type UserId = bigint;
+export type ScheduleId = bigint;
+export interface WorkerProfile {
+    id: bigint;
+    status: WorkerStatus;
+    userId: bigint;
+    name: string;
+    createdAt: Time;
+    profession: string;
+    rating: number;
+    phone: string;
+    location: string;
+}
+export type TaskId = bigint;
+export type NotificationId = bigint;
+export interface Notification {
+    id: NotificationId;
+    title: string;
+    notificationType: string;
+    jobId: bigint;
+    isRead: boolean;
+    message: string;
+    timestamp: Time;
 }
 export enum DayOfWeek {
     tuesday = "tuesday",
@@ -133,8 +153,24 @@ export enum RentalStatus {
     rented = "rented",
     available = "available"
 }
+export enum UserRole {
+    admin = "admin",
+    user = "user",
+    worker = "worker"
+}
+export enum UserRole__1 {
+    admin = "admin",
+    user = "user",
+    guest = "guest"
+}
+export enum WorkerStatus {
+    active = "active",
+    blocked = "blocked",
+    inactive = "inactive"
+}
 export interface backendInterface {
     applyToVacancy(vacancyId: JobVacancyId, applicantName: string, applicantPhone: string): Promise<JobApplicationId>;
+    assignCallerUserRole(user: Principal, role: UserRole__1): Promise<void>;
     assignJobPosting(id: JobPostingId, workerName: string, workerPhone: string, workerAddress: string): Promise<boolean>;
     closeJobVacancy(id: JobVacancyId): Promise<void>;
     completeJobPosting(id: JobPostingId): Promise<boolean>;
@@ -146,7 +182,7 @@ export interface backendInterface {
     createScheduleEntry(title: string, dayOfWeek: DayOfWeek, startTime: bigint, endTime: bigint, notes: string): Promise<ScheduleId>;
     createTask(title: string, description: string, priority: Priority, dueDate: Time | null): Promise<TaskId>;
     createWorkEntry(workerName: string, date: string, workType: string, startTime: bigint, endTime: bigint, hoursWorked: number, dailyPayment: number, notes: string): Promise<WorkEntryId>;
-    deleteJobPosting(id: JobPostingId): Promise<void>;
+    createWorkerProfile(userId: bigint, name: string, profession: string, phone: string, rating: number, location: string): Promise<bigint>;
     deleteJobVacancy(id: JobVacancyId): Promise<void>;
     deleteNote(noteId: NoteId): Promise<void>;
     deleteNotification(id: NotificationId): Promise<void>;
@@ -154,19 +190,20 @@ export interface backendInterface {
     deleteScheduleEntry(entryId: ScheduleId): Promise<void>;
     deleteTask(taskId: TaskId): Promise<void>;
     deleteWorkEntry(entryId: WorkEntryId): Promise<void>;
-    getAllJobPostings(): Promise<Array<JobPosting>>;
+    getActiveWorkers(): Promise<Array<WorkerProfile>>;
     getAllJobVacancies(): Promise<Array<JobVacancy>>;
     getAllNotes(): Promise<Array<Note>>;
     getAllNotifications(): Promise<Array<Notification>>;
     getAllRentals(): Promise<Array<RentalProperty>>;
     getAllScheduleEntries(): Promise<Array<ScheduleEntry>>;
     getAllTasks(): Promise<Array<Task>>;
+    getAllUsers(): Promise<Array<UserAccount>>;
     getAllWorkEntries(): Promise<Array<WorkEntry>>;
+    getAllWorkerProfiles(): Promise<Array<WorkerProfile>>;
     getApplicationsForVacancy(vacancyId: JobVacancyId): Promise<Array<JobApplication>>;
-    getAssignedJobPostings(): Promise<Array<JobPosting>>;
     getAvailableJobPostings(): Promise<Array<JobPosting>>;
-    getAvailableJobPostingsForWorker(workerId: string): Promise<Array<JobPosting>>;
     getAvailableRentals(): Promise<Array<RentalProperty>>;
+    getCallerUserRole(): Promise<UserRole__1>;
     getJobVacanciesByCategory(category: string): Promise<Array<JobVacancy>>;
     getJobVacanciesByLocation(location: string): Promise<Array<JobVacancy>>;
     getNotInterestedJobIds(workerId: string): Promise<Array<JobPostingId>>;
@@ -176,16 +213,38 @@ export interface backendInterface {
     getScheduleEntry(entryId: ScheduleId): Promise<ScheduleEntry>;
     getTask(taskId: TaskId): Promise<Task>;
     getUnreadCount(): Promise<bigint>;
+    getUserById(id: UserId): Promise<UserAccount | null>;
     getWorkEntriesByDate(date: string): Promise<Array<WorkEntry>>;
     getWorkEntriesByDateRange(fromDate: string, toDate: string): Promise<Array<WorkEntry>>;
     getWorkEntriesByWorker(workerName: string): Promise<Array<WorkEntry>>;
     getWorkEntry(entryId: WorkEntryId): Promise<WorkEntry>;
+    getWorkerProfileByUserId(userId: bigint): Promise<WorkerProfile | null>;
+    isCallerAdmin(): Promise<boolean>;
+    login(emailOrPhone: string, passwordHash: string): Promise<{
+        __kind__: "ok";
+        ok: {
+            userId: UserId;
+            role: UserRole;
+        };
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
     markAllNotificationsRead(): Promise<void>;
     markNotificationRead(id: NotificationId): Promise<void>;
+    register(name: string, emailOrPhone: string, passwordHash: string, role: UserRole): Promise<{
+        __kind__: "ok";
+        ok: UserId;
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
     setJobPreference(workerId: string, jobId: JobPostingId, interested: boolean): Promise<void>;
+    setWorkerStatus(workerId: bigint, status: WorkerStatus): Promise<boolean>;
     updateNote(noteId: NoteId, title: string, body: string): Promise<void>;
     updateRentalStatus(id: RentalPropertyId, status: RentalStatus): Promise<void>;
     updateScheduleEntry(entryId: ScheduleId, title: string, dayOfWeek: DayOfWeek, startTime: bigint, endTime: bigint, notes: string): Promise<void>;
     updateTask(taskId: TaskId, title: string, description: string, priority: Priority, dueDate: Time | null, completed: boolean): Promise<void>;
     updateWorkEntry(entryId: WorkEntryId, workerName: string, date: string, workType: string, startTime: bigint, endTime: bigint, hoursWorked: number, dailyPayment: number, notes: string): Promise<void>;
+    updateWorkerStatus(workerId: bigint, active: boolean): Promise<boolean>;
 }

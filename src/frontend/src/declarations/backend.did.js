@@ -10,6 +10,11 @@ import { IDL } from '@icp-sdk/core/candid';
 
 export const JobVacancyId = IDL.Nat;
 export const JobApplicationId = IDL.Nat;
+export const UserRole__1 = IDL.Variant({
+  'admin' : IDL.Null,
+  'user' : IDL.Null,
+  'guest' : IDL.Null,
+});
 export const JobPostingId = IDL.Nat;
 export const NoteId = IDL.Nat;
 export const NotificationId = IDL.Nat;
@@ -32,26 +37,21 @@ export const Priority = IDL.Variant({
 export const Time = IDL.Int;
 export const TaskId = IDL.Nat;
 export const WorkEntryId = IDL.Nat;
-export const JobStatus = IDL.Variant({
-  'assigned' : IDL.Null,
-  'deleted' : IDL.Null,
-  'completed' : IDL.Null,
-  'available' : IDL.Null,
+export const WorkerStatus = IDL.Variant({
+  'active' : IDL.Null,
+  'blocked' : IDL.Null,
+  'inactive' : IDL.Null,
 });
-export const JobPosting = IDL.Record({
-  'id' : JobPostingId,
-  'startTime' : IDL.Int,
-  'status' : JobStatus,
-  'title' : IDL.Text,
-  'endTime' : IDL.Int,
-  'date' : IDL.Text,
+export const WorkerProfile = IDL.Record({
+  'id' : IDL.Nat,
+  'status' : WorkerStatus,
+  'userId' : IDL.Nat,
+  'name' : IDL.Text,
   'createdAt' : Time,
-  'description' : IDL.Text,
-  'address' : IDL.Text,
-  'assignedWorkerAddress' : IDL.Text,
-  'assignedWorkerPhone' : IDL.Text,
-  'assignedWorkerName' : IDL.Text,
-  'paymentAmount' : IDL.Float64,
+  'profession' : IDL.Text,
+  'rating' : IDL.Float64,
+  'phone' : IDL.Text,
+  'location' : IDL.Text,
 });
 export const JobVacancyStatus = IDL.Variant({
   'closed' : IDL.Null,
@@ -115,6 +115,19 @@ export const Task = IDL.Record({
   'description' : IDL.Text,
   'priority' : Priority,
 });
+export const UserRole = IDL.Variant({
+  'admin' : IDL.Null,
+  'user' : IDL.Null,
+  'worker' : IDL.Null,
+});
+export const UserAccount = IDL.Record({
+  'id' : IDL.Nat,
+  'emailOrPhone' : IDL.Text,
+  'name' : IDL.Text,
+  'createdAt' : Time,
+  'role' : UserRole,
+  'passwordHash' : IDL.Text,
+});
 export const WorkEntry = IDL.Record({
   'id' : WorkEntryId,
   'startTime' : IDL.Nat,
@@ -134,13 +147,37 @@ export const JobApplication = IDL.Record({
   'applicantPhone' : IDL.Text,
   'vacancyId' : JobVacancyId,
 });
+export const JobStatus = IDL.Variant({
+  'assigned' : IDL.Null,
+  'deleted' : IDL.Null,
+  'completed' : IDL.Null,
+  'available' : IDL.Null,
+});
+export const JobPosting = IDL.Record({
+  'id' : JobPostingId,
+  'startTime' : IDL.Int,
+  'status' : JobStatus,
+  'title' : IDL.Text,
+  'endTime' : IDL.Int,
+  'date' : IDL.Text,
+  'createdAt' : Time,
+  'description' : IDL.Text,
+  'address' : IDL.Text,
+  'assignedWorkerAddress' : IDL.Text,
+  'assignedWorkerPhone' : IDL.Text,
+  'assignedWorkerName' : IDL.Text,
+  'paymentAmount' : IDL.Float64,
+});
+export const UserId = IDL.Nat;
 
 export const idlService = IDL.Service({
+  '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
   'applyToVacancy' : IDL.Func(
       [JobVacancyId, IDL.Text, IDL.Text],
       [JobApplicationId],
       [],
     ),
+  'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole__1], [], []),
   'assignJobPosting' : IDL.Func(
       [JobPostingId, IDL.Text, IDL.Text, IDL.Text],
       [IDL.Bool],
@@ -193,7 +230,11 @@ export const idlService = IDL.Service({
       [WorkEntryId],
       [],
     ),
-  'deleteJobPosting' : IDL.Func([JobPostingId], [], []),
+  'createWorkerProfile' : IDL.Func(
+      [IDL.Nat, IDL.Text, IDL.Text, IDL.Text, IDL.Float64, IDL.Text],
+      [IDL.Nat],
+      [],
+    ),
   'deleteJobVacancy' : IDL.Func([JobVacancyId], [], []),
   'deleteNote' : IDL.Func([NoteId], [], []),
   'deleteNotification' : IDL.Func([NotificationId], [], []),
@@ -201,27 +242,24 @@ export const idlService = IDL.Service({
   'deleteScheduleEntry' : IDL.Func([ScheduleId], [], []),
   'deleteTask' : IDL.Func([TaskId], [], []),
   'deleteWorkEntry' : IDL.Func([WorkEntryId], [], []),
-  'getAllJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
+  'getActiveWorkers' : IDL.Func([], [IDL.Vec(WorkerProfile)], ['query']),
   'getAllJobVacancies' : IDL.Func([], [IDL.Vec(JobVacancy)], ['query']),
   'getAllNotes' : IDL.Func([], [IDL.Vec(Note)], ['query']),
   'getAllNotifications' : IDL.Func([], [IDL.Vec(Notification)], ['query']),
   'getAllRentals' : IDL.Func([], [IDL.Vec(RentalProperty)], ['query']),
   'getAllScheduleEntries' : IDL.Func([], [IDL.Vec(ScheduleEntry)], ['query']),
   'getAllTasks' : IDL.Func([], [IDL.Vec(Task)], ['query']),
+  'getAllUsers' : IDL.Func([], [IDL.Vec(UserAccount)], ['query']),
   'getAllWorkEntries' : IDL.Func([], [IDL.Vec(WorkEntry)], ['query']),
+  'getAllWorkerProfiles' : IDL.Func([], [IDL.Vec(WorkerProfile)], ['query']),
   'getApplicationsForVacancy' : IDL.Func(
       [JobVacancyId],
       [IDL.Vec(JobApplication)],
       ['query'],
     ),
-  'getAssignedJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
   'getAvailableJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
-  'getAvailableJobPostingsForWorker' : IDL.Func(
-      [IDL.Text],
-      [IDL.Vec(JobPosting)],
-      ['query'],
-    ),
   'getAvailableRentals' : IDL.Func([], [IDL.Vec(RentalProperty)], ['query']),
+  'getCallerUserRole' : IDL.Func([], [UserRole__1], ['query']),
   'getJobVacanciesByCategory' : IDL.Func(
       [IDL.Text],
       [IDL.Vec(JobVacancy)],
@@ -247,6 +285,7 @@ export const idlService = IDL.Service({
   'getScheduleEntry' : IDL.Func([ScheduleId], [ScheduleEntry], ['query']),
   'getTask' : IDL.Func([TaskId], [Task], ['query']),
   'getUnreadCount' : IDL.Func([], [IDL.Nat], ['query']),
+  'getUserById' : IDL.Func([UserId], [IDL.Opt(UserAccount)], ['query']),
   'getWorkEntriesByDate' : IDL.Func(
       [IDL.Text],
       [IDL.Vec(WorkEntry)],
@@ -263,9 +302,31 @@ export const idlService = IDL.Service({
       ['query'],
     ),
   'getWorkEntry' : IDL.Func([WorkEntryId], [WorkEntry], ['query']),
+  'getWorkerProfileByUserId' : IDL.Func(
+      [IDL.Nat],
+      [IDL.Opt(WorkerProfile)],
+      ['query'],
+    ),
+  'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'login' : IDL.Func(
+      [IDL.Text, IDL.Text],
+      [
+        IDL.Variant({
+          'ok' : IDL.Record({ 'userId' : UserId, 'role' : UserRole }),
+          'err' : IDL.Text,
+        }),
+      ],
+      [],
+    ),
   'markAllNotificationsRead' : IDL.Func([], [], []),
   'markNotificationRead' : IDL.Func([NotificationId], [], []),
+  'register' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text, UserRole],
+      [IDL.Variant({ 'ok' : UserId, 'err' : IDL.Text })],
+      [],
+    ),
   'setJobPreference' : IDL.Func([IDL.Text, JobPostingId, IDL.Bool], [], []),
+  'setWorkerStatus' : IDL.Func([IDL.Nat, WorkerStatus], [IDL.Bool], []),
   'updateNote' : IDL.Func([NoteId, IDL.Text, IDL.Text], [], []),
   'updateRentalStatus' : IDL.Func([RentalPropertyId, RentalStatus], [], []),
   'updateScheduleEntry' : IDL.Func(
@@ -293,6 +354,7 @@ export const idlService = IDL.Service({
       [],
       [],
     ),
+  'updateWorkerStatus' : IDL.Func([IDL.Nat, IDL.Bool], [IDL.Bool], []),
 });
 
 export const idlInitArgs = [];
@@ -300,6 +362,11 @@ export const idlInitArgs = [];
 export const idlFactory = ({ IDL }) => {
   const JobVacancyId = IDL.Nat;
   const JobApplicationId = IDL.Nat;
+  const UserRole__1 = IDL.Variant({
+    'admin' : IDL.Null,
+    'user' : IDL.Null,
+    'guest' : IDL.Null,
+  });
   const JobPostingId = IDL.Nat;
   const NoteId = IDL.Nat;
   const NotificationId = IDL.Nat;
@@ -322,26 +389,21 @@ export const idlFactory = ({ IDL }) => {
   const Time = IDL.Int;
   const TaskId = IDL.Nat;
   const WorkEntryId = IDL.Nat;
-  const JobStatus = IDL.Variant({
-    'assigned' : IDL.Null,
-    'deleted' : IDL.Null,
-    'completed' : IDL.Null,
-    'available' : IDL.Null,
+  const WorkerStatus = IDL.Variant({
+    'active' : IDL.Null,
+    'blocked' : IDL.Null,
+    'inactive' : IDL.Null,
   });
-  const JobPosting = IDL.Record({
-    'id' : JobPostingId,
-    'startTime' : IDL.Int,
-    'status' : JobStatus,
-    'title' : IDL.Text,
-    'endTime' : IDL.Int,
-    'date' : IDL.Text,
+  const WorkerProfile = IDL.Record({
+    'id' : IDL.Nat,
+    'status' : WorkerStatus,
+    'userId' : IDL.Nat,
+    'name' : IDL.Text,
     'createdAt' : Time,
-    'description' : IDL.Text,
-    'address' : IDL.Text,
-    'assignedWorkerAddress' : IDL.Text,
-    'assignedWorkerPhone' : IDL.Text,
-    'assignedWorkerName' : IDL.Text,
-    'paymentAmount' : IDL.Float64,
+    'profession' : IDL.Text,
+    'rating' : IDL.Float64,
+    'phone' : IDL.Text,
+    'location' : IDL.Text,
   });
   const JobVacancyStatus = IDL.Variant({
     'closed' : IDL.Null,
@@ -405,6 +467,19 @@ export const idlFactory = ({ IDL }) => {
     'description' : IDL.Text,
     'priority' : Priority,
   });
+  const UserRole = IDL.Variant({
+    'admin' : IDL.Null,
+    'user' : IDL.Null,
+    'worker' : IDL.Null,
+  });
+  const UserAccount = IDL.Record({
+    'id' : IDL.Nat,
+    'emailOrPhone' : IDL.Text,
+    'name' : IDL.Text,
+    'createdAt' : Time,
+    'role' : UserRole,
+    'passwordHash' : IDL.Text,
+  });
   const WorkEntry = IDL.Record({
     'id' : WorkEntryId,
     'startTime' : IDL.Nat,
@@ -424,13 +499,37 @@ export const idlFactory = ({ IDL }) => {
     'applicantPhone' : IDL.Text,
     'vacancyId' : JobVacancyId,
   });
+  const JobStatus = IDL.Variant({
+    'assigned' : IDL.Null,
+    'deleted' : IDL.Null,
+    'completed' : IDL.Null,
+    'available' : IDL.Null,
+  });
+  const JobPosting = IDL.Record({
+    'id' : JobPostingId,
+    'startTime' : IDL.Int,
+    'status' : JobStatus,
+    'title' : IDL.Text,
+    'endTime' : IDL.Int,
+    'date' : IDL.Text,
+    'createdAt' : Time,
+    'description' : IDL.Text,
+    'address' : IDL.Text,
+    'assignedWorkerAddress' : IDL.Text,
+    'assignedWorkerPhone' : IDL.Text,
+    'assignedWorkerName' : IDL.Text,
+    'paymentAmount' : IDL.Float64,
+  });
+  const UserId = IDL.Nat;
   
   return IDL.Service({
+    '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'applyToVacancy' : IDL.Func(
         [JobVacancyId, IDL.Text, IDL.Text],
         [JobApplicationId],
         [],
       ),
+    'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole__1], [], []),
     'assignJobPosting' : IDL.Func(
         [JobPostingId, IDL.Text, IDL.Text, IDL.Text],
         [IDL.Bool],
@@ -491,7 +590,11 @@ export const idlFactory = ({ IDL }) => {
         [WorkEntryId],
         [],
       ),
-    'deleteJobPosting' : IDL.Func([JobPostingId], [], []),
+    'createWorkerProfile' : IDL.Func(
+        [IDL.Nat, IDL.Text, IDL.Text, IDL.Text, IDL.Float64, IDL.Text],
+        [IDL.Nat],
+        [],
+      ),
     'deleteJobVacancy' : IDL.Func([JobVacancyId], [], []),
     'deleteNote' : IDL.Func([NoteId], [], []),
     'deleteNotification' : IDL.Func([NotificationId], [], []),
@@ -499,27 +602,24 @@ export const idlFactory = ({ IDL }) => {
     'deleteScheduleEntry' : IDL.Func([ScheduleId], [], []),
     'deleteTask' : IDL.Func([TaskId], [], []),
     'deleteWorkEntry' : IDL.Func([WorkEntryId], [], []),
-    'getAllJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
+    'getActiveWorkers' : IDL.Func([], [IDL.Vec(WorkerProfile)], ['query']),
     'getAllJobVacancies' : IDL.Func([], [IDL.Vec(JobVacancy)], ['query']),
     'getAllNotes' : IDL.Func([], [IDL.Vec(Note)], ['query']),
     'getAllNotifications' : IDL.Func([], [IDL.Vec(Notification)], ['query']),
     'getAllRentals' : IDL.Func([], [IDL.Vec(RentalProperty)], ['query']),
     'getAllScheduleEntries' : IDL.Func([], [IDL.Vec(ScheduleEntry)], ['query']),
     'getAllTasks' : IDL.Func([], [IDL.Vec(Task)], ['query']),
+    'getAllUsers' : IDL.Func([], [IDL.Vec(UserAccount)], ['query']),
     'getAllWorkEntries' : IDL.Func([], [IDL.Vec(WorkEntry)], ['query']),
+    'getAllWorkerProfiles' : IDL.Func([], [IDL.Vec(WorkerProfile)], ['query']),
     'getApplicationsForVacancy' : IDL.Func(
         [JobVacancyId],
         [IDL.Vec(JobApplication)],
         ['query'],
       ),
-    'getAssignedJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
     'getAvailableJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
-    'getAvailableJobPostingsForWorker' : IDL.Func(
-        [IDL.Text],
-        [IDL.Vec(JobPosting)],
-        ['query'],
-      ),
     'getAvailableRentals' : IDL.Func([], [IDL.Vec(RentalProperty)], ['query']),
+    'getCallerUserRole' : IDL.Func([], [UserRole__1], ['query']),
     'getJobVacanciesByCategory' : IDL.Func(
         [IDL.Text],
         [IDL.Vec(JobVacancy)],
@@ -545,6 +645,7 @@ export const idlFactory = ({ IDL }) => {
     'getScheduleEntry' : IDL.Func([ScheduleId], [ScheduleEntry], ['query']),
     'getTask' : IDL.Func([TaskId], [Task], ['query']),
     'getUnreadCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getUserById' : IDL.Func([UserId], [IDL.Opt(UserAccount)], ['query']),
     'getWorkEntriesByDate' : IDL.Func(
         [IDL.Text],
         [IDL.Vec(WorkEntry)],
@@ -561,9 +662,31 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'getWorkEntry' : IDL.Func([WorkEntryId], [WorkEntry], ['query']),
+    'getWorkerProfileByUserId' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Opt(WorkerProfile)],
+        ['query'],
+      ),
+    'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'login' : IDL.Func(
+        [IDL.Text, IDL.Text],
+        [
+          IDL.Variant({
+            'ok' : IDL.Record({ 'userId' : UserId, 'role' : UserRole }),
+            'err' : IDL.Text,
+          }),
+        ],
+        [],
+      ),
     'markAllNotificationsRead' : IDL.Func([], [], []),
     'markNotificationRead' : IDL.Func([NotificationId], [], []),
+    'register' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text, UserRole],
+        [IDL.Variant({ 'ok' : UserId, 'err' : IDL.Text })],
+        [],
+      ),
     'setJobPreference' : IDL.Func([IDL.Text, JobPostingId, IDL.Bool], [], []),
+    'setWorkerStatus' : IDL.Func([IDL.Nat, WorkerStatus], [IDL.Bool], []),
     'updateNote' : IDL.Func([NoteId, IDL.Text, IDL.Text], [], []),
     'updateRentalStatus' : IDL.Func([RentalPropertyId, RentalStatus], [], []),
     'updateScheduleEntry' : IDL.Func(
@@ -591,6 +714,7 @@ export const idlFactory = ({ IDL }) => {
         [],
         [],
       ),
+    'updateWorkerStatus' : IDL.Func([IDL.Nat, IDL.Bool], [IDL.Bool], []),
   });
 };
 

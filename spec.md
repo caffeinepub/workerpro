@@ -1,39 +1,41 @@
-# WorkerPro V12 - Multi-Service Platform Upgrade
+# WorkerPro V13 – Auth & Worker Status
 
 ## Current State
-WorkerPro is a mobile PWA with:
-- Service worker booking (Electrician, Plumber, Cleaner, Carpenter)
-- Job posting/assignment system (backend jobs with status: available/assigned/completed/deleted)
-- Worker registration and job preferences ("Not Interested")
-- Job Details modal with Maps link
-- Notifications system
-- Bottom nav: Home, Bookings, Add Work, Messages, Profile
-- Existing backend: JobPostings, Workers, JobPreferences, Notifications, WorkEntries
+WorkerPro is a multi-service mobile PWA with job board, job vacancies, rental listings, worker management, daily work tracking, notifications, and a bottom navigation (Home, Jobs, Rentals, Bookings, Profile). There is no real user authentication – no login/registration screens exist and no session management. Workers have no active/inactive status field.
 
 ## Requested Changes (Diff)
 
 ### Add
-- **Job Vacancies module**: Employer-posted employment opportunities (distinct from existing worker job assignments). Fields: title, companyName, category, salary (optional), location, description, postedAt, status (open/closed).
-- **Job Applications**: Users can apply to job vacancies. Fields: vacancyId, applicantName, applicantPhone, appliedAt.
-- **Rental Houses module**: Property listings. Fields: title, description, location, pricePerMonth, numberOfRooms, contactPhone, ownerName, imageUrl, amenities, status (available/rented), createdAt.
-- **Service categories on home screen**: Painter, Cleaner, Plumber, Carpenter, Electrician displayed in a grid with icons.
-- **Updated bottom navigation**: Home, Jobs, Rentals, Bookings, Profile (replaces Add Work and Messages tabs).
-- **Jobs page**: Browse job vacancies, filter by category/location, post new vacancies (admin), apply to jobs.
-- **Rentals page**: Browse rental listings, filter, view details, contact owner.
+- User authentication: register and login with email or phone number + password
+- Password hashing (SHA-256 via Motoko Text hashing) stored on backend
+- Session token stored in localStorage to persist login across reloads
+- "Forgot Password" placeholder flow on login screen
+- Role system: `admin`, `user`, `worker`
+- Worker `status` field: `active | inactive | blocked`
+- Worker toggle switch (self-service) to flip own status between active and inactive
+- Admin panel: view all workers, set worker status manually, block workers
+- Filter: only `active` workers shown in home screen listings and search results
+- "Currently Unavailable" badge on inactive workers (admin view)
+- Login / Registration screens shown before main app if not authenticated
+- After login: admin → admin dashboard, user/worker → main app
 
 ### Modify
-- Home screen: Add expanded service categories grid (Painter, Cleaner, Plumber, Carpenter, Electrician) with icons.
-- Bottom navigation: Change from [Home, Bookings, Add Work, Messages, Profile] to [Home, Jobs, Rentals, Bookings, Profile].
-- App routing: Add `jobs` and `rentals` pages; retain existing deep pages.
+- WorkerProfile / Workers data model: add `status`, `email`, `phone`, `passwordHash`, `role` fields
+- Home screen worker cards: hide inactive workers from listing
+- Workers admin page: show status badge and toggle/block controls
+- App root: gate full app behind auth check; show login screen if no valid session
 
 ### Remove
-- Bottom nav "Add Work" tab (moved to Bookings or accessible via Jobs/Home)
-- Bottom nav "Messages" tab (accessible from Profile or retained as deep page)
+- Nothing removed
 
 ## Implementation Plan
-1. Add `JobVacancy`, `JobApplication`, `RentalProperty` types and CRUD to Motoko backend.
-2. Frontend: Update bottom nav to [Home, Jobs, Rentals, Bookings, Profile].
-3. Frontend: Expand home screen service categories grid with 5 categories + icons.
-4. Frontend: Build `JobsPage` - vacancy listing cards (title, company, salary, location, Apply Now button), post form, filter.
-5. Frontend: Build `RentalsPage` - rental cards (image placeholder, price, location, rooms, View Details / Contact Owner), add form, filter.
-6. Frontend: Wire new backend APIs for vacancies, applications, and rentals.
+1. Backend: add `UserAccount` type with id, name, email, phone, passwordHash, role, createdAt
+2. Backend: add `register`, `login` (returns session token), `getMe` functions
+3. Backend: add `workerStatus` field to worker records; add `setWorkerStatus(workerId, status)` and `blockWorker(workerId)` admin functions
+4. Backend: add `getActiveWorkers` query filtering by status=active
+5. Frontend: Auth context/store in localStorage (token + role)
+6. Frontend: LoginScreen and RegisterScreen components with validation
+7. Frontend: App.tsx gated – show login if not authenticated, route by role after login
+8. Frontend: Worker toggle switch on worker profile/settings page
+9. Frontend: Admin workers panel with status badge, toggle, block button
+10. Frontend: Home worker cards filter to active only

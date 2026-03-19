@@ -113,6 +113,21 @@ export interface Task {
 }
 export type TaskId = bigint;
 export type Time = bigint;
+export interface UserAccount {
+  'id' : bigint,
+  'emailOrPhone' : string,
+  'name' : string,
+  'createdAt' : Time,
+  'role' : UserRole,
+  'passwordHash' : string,
+}
+export type UserId = bigint;
+export type UserRole = { 'admin' : null } |
+  { 'user' : null } |
+  { 'worker' : null };
+export type UserRole__1 = { 'admin' : null } |
+  { 'user' : null } |
+  { 'guest' : null };
 export interface WorkEntry {
   'id' : WorkEntryId,
   'startTime' : bigint,
@@ -126,11 +141,27 @@ export interface WorkEntry {
   'workerName' : string,
 }
 export type WorkEntryId = bigint;
+export interface WorkerProfile {
+  'id' : bigint,
+  'status' : WorkerStatus,
+  'userId' : bigint,
+  'name' : string,
+  'createdAt' : Time,
+  'profession' : string,
+  'rating' : number,
+  'phone' : string,
+  'location' : string,
+}
+export type WorkerStatus = { 'active' : null } |
+  { 'blocked' : null } |
+  { 'inactive' : null };
 export interface _SERVICE {
+  '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'applyToVacancy' : ActorMethod<
     [JobVacancyId, string, string],
     JobApplicationId
   >,
+  'assignCallerUserRole' : ActorMethod<[Principal, UserRole__1], undefined>,
   'assignJobPosting' : ActorMethod<
     [JobPostingId, string, string, string],
     boolean
@@ -163,7 +194,10 @@ export interface _SERVICE {
     [string, string, string, bigint, bigint, number, number, string],
     WorkEntryId
   >,
-  'deleteJobPosting' : ActorMethod<[JobPostingId], undefined>,
+  'createWorkerProfile' : ActorMethod<
+    [bigint, string, string, string, number, string],
+    bigint
+  >,
   'deleteJobVacancy' : ActorMethod<[JobVacancyId], undefined>,
   'deleteNote' : ActorMethod<[NoteId], undefined>,
   'deleteNotification' : ActorMethod<[NotificationId], undefined>,
@@ -171,22 +205,23 @@ export interface _SERVICE {
   'deleteScheduleEntry' : ActorMethod<[ScheduleId], undefined>,
   'deleteTask' : ActorMethod<[TaskId], undefined>,
   'deleteWorkEntry' : ActorMethod<[WorkEntryId], undefined>,
-  'getAllJobPostings' : ActorMethod<[], Array<JobPosting>>,
+  'getActiveWorkers' : ActorMethod<[], Array<WorkerProfile>>,
   'getAllJobVacancies' : ActorMethod<[], Array<JobVacancy>>,
   'getAllNotes' : ActorMethod<[], Array<Note>>,
   'getAllNotifications' : ActorMethod<[], Array<Notification>>,
   'getAllRentals' : ActorMethod<[], Array<RentalProperty>>,
   'getAllScheduleEntries' : ActorMethod<[], Array<ScheduleEntry>>,
   'getAllTasks' : ActorMethod<[], Array<Task>>,
+  'getAllUsers' : ActorMethod<[], Array<UserAccount>>,
   'getAllWorkEntries' : ActorMethod<[], Array<WorkEntry>>,
+  'getAllWorkerProfiles' : ActorMethod<[], Array<WorkerProfile>>,
   'getApplicationsForVacancy' : ActorMethod<
     [JobVacancyId],
     Array<JobApplication>
   >,
-  'getAssignedJobPostings' : ActorMethod<[], Array<JobPosting>>,
   'getAvailableJobPostings' : ActorMethod<[], Array<JobPosting>>,
-  'getAvailableJobPostingsForWorker' : ActorMethod<[string], Array<JobPosting>>,
   'getAvailableRentals' : ActorMethod<[], Array<RentalProperty>>,
+  'getCallerUserRole' : ActorMethod<[], UserRole__1>,
   'getJobVacanciesByCategory' : ActorMethod<[string], Array<JobVacancy>>,
   'getJobVacanciesByLocation' : ActorMethod<[string], Array<JobVacancy>>,
   'getNotInterestedJobIds' : ActorMethod<[string], Array<JobPostingId>>,
@@ -196,13 +231,27 @@ export interface _SERVICE {
   'getScheduleEntry' : ActorMethod<[ScheduleId], ScheduleEntry>,
   'getTask' : ActorMethod<[TaskId], Task>,
   'getUnreadCount' : ActorMethod<[], bigint>,
+  'getUserById' : ActorMethod<[UserId], [] | [UserAccount]>,
   'getWorkEntriesByDate' : ActorMethod<[string], Array<WorkEntry>>,
   'getWorkEntriesByDateRange' : ActorMethod<[string, string], Array<WorkEntry>>,
   'getWorkEntriesByWorker' : ActorMethod<[string], Array<WorkEntry>>,
   'getWorkEntry' : ActorMethod<[WorkEntryId], WorkEntry>,
+  'getWorkerProfileByUserId' : ActorMethod<[bigint], [] | [WorkerProfile]>,
+  'isCallerAdmin' : ActorMethod<[], boolean>,
+  'login' : ActorMethod<
+    [string, string],
+    { 'ok' : { 'userId' : UserId, 'role' : UserRole } } |
+      { 'err' : string }
+  >,
   'markAllNotificationsRead' : ActorMethod<[], undefined>,
   'markNotificationRead' : ActorMethod<[NotificationId], undefined>,
+  'register' : ActorMethod<
+    [string, string, string, UserRole],
+    { 'ok' : UserId } |
+      { 'err' : string }
+  >,
   'setJobPreference' : ActorMethod<[string, JobPostingId, boolean], undefined>,
+  'setWorkerStatus' : ActorMethod<[bigint, WorkerStatus], boolean>,
   'updateNote' : ActorMethod<[NoteId, string, string], undefined>,
   'updateRentalStatus' : ActorMethod<
     [RentalPropertyId, RentalStatus],
@@ -230,6 +279,7 @@ export interface _SERVICE {
     ],
     undefined
   >,
+  'updateWorkerStatus' : ActorMethod<[bigint, boolean], boolean>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];
