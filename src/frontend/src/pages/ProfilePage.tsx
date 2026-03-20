@@ -6,6 +6,7 @@ import {
   ChevronRight,
   ClipboardList,
   LogOut,
+  MapPin,
   Settings,
   ShieldCheck,
   Users,
@@ -25,7 +26,9 @@ type ProfileNav =
   | "dailywork"
   | "reports"
   | "notifications"
-  | "adminworkers";
+  | "adminworkers"
+  | "settings"
+  | "nearby";
 
 interface ProfilePageProps {
   onNavigate: (page: ProfileNav) => void;
@@ -34,7 +37,7 @@ interface ProfilePageProps {
 }
 
 const MENU_ITEMS: {
-  id: ProfileNav | "settings";
+  id: ProfileNav | string;
   label: string;
   subtitle: string;
   icon: typeof Briefcase;
@@ -54,6 +57,13 @@ const MENU_ITEMS: {
     subtitle: "Register and manage workers",
     icon: Users,
     color: "bg-green-100 text-green-600",
+  },
+  {
+    id: "nearby",
+    label: "Nearby Workers",
+    subtitle: "Find workers near your location",
+    icon: MapPin,
+    color: "bg-cyan-100 text-cyan-600",
   },
   {
     id: "dailywork",
@@ -87,24 +97,17 @@ const MENU_ITEMS: {
   {
     id: "settings",
     label: "Settings",
-    subtitle: "App preferences",
+    subtitle: "Profile, password, and preferences",
     icon: Settings,
     color: "bg-gray-100 text-gray-600",
   },
 ];
 
-function WorkerStatusCard({
-  userId,
-}: {
-  userId: bigint;
-}) {
+function WorkerStatusCard({ userId }: { userId: bigint }) {
   const { data: workerProfile, isLoading } = useGetWorkerByUserId(userId);
   const updateStatus = useUpdateWorkerStatus();
-
   if (isLoading || !workerProfile) return null;
-
   const isActive = workerProfile.status === WorkerStatus.active;
-
   const handleToggle = async (checked: boolean) => {
     try {
       await updateStatus.mutateAsync({
@@ -120,7 +123,6 @@ function WorkerStatusCard({
       toast.error("Failed to update status");
     }
   };
-
   return (
     <motion.div
       initial={{ opacity: 0, y: -6 }}
@@ -148,9 +150,7 @@ function WorkerStatusCard({
             className={isActive ? "data-[state=checked]:bg-green-500" : ""}
           />
           <span
-            className={`text-[10px] font-semibold ${
-              isActive ? "text-green-600" : "text-gray-400"
-            }`}
+            className={`text-[10px] font-semibold ${isActive ? "text-green-600" : "text-gray-400"}`}
           >
             {isActive ? "ACTIVE" : "INACTIVE"}
           </span>
@@ -174,14 +174,12 @@ export default function ProfilePage({
     .join("")
     .toUpperCase()
     .slice(0, 2);
-
   const visibleMenuItems = MENU_ITEMS.filter(
     (item) => !item.adminOnly || isAdmin,
   );
 
   return (
     <div className="flex flex-col min-h-full pb-20">
-      {/* Profile Card */}
       <div className="px-5 pt-6 pb-4">
         <motion.div
           initial={{ opacity: 0, y: -8 }}
@@ -201,13 +199,7 @@ export default function ProfilePage({
           {session && (
             <div className="mt-1">
               <span
-                className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                  isAdmin
-                    ? "bg-red-100 text-red-600"
-                    : isWorker
-                      ? "bg-green-100 text-green-700"
-                      : "bg-blue-100 text-blue-600"
-                }`}
+                className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isAdmin ? "bg-red-100 text-red-600" : isWorker ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-600"}`}
               >
                 {isAdmin ? "Admin" : isWorker ? "Worker" : "User"}
               </span>
@@ -232,10 +224,8 @@ export default function ProfilePage({
         </motion.div>
       </div>
 
-      {/* Worker Status Toggle */}
       {isWorker && session && <WorkerStatusCard userId={session.userId} />}
 
-      {/* Menu Items */}
       <div className="px-5 space-y-2">
         {visibleMenuItems.map((item, i) => (
           <motion.button
@@ -244,11 +234,7 @@ export default function ProfilePage({
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: i * 0.05 }}
             data-ocid={`profile.${item.id}.button`}
-            onClick={() => {
-              if (item.id !== "settings") {
-                onNavigate(item.id as ProfileNav);
-              }
-            }}
+            onClick={() => onNavigate(item.id as ProfileNav)}
             className="w-full flex items-center gap-4 p-4 worker-card hover:shadow-md transition-shadow text-left"
           >
             <div
@@ -269,7 +255,6 @@ export default function ProfilePage({
         ))}
       </div>
 
-      {/* Logout */}
       {session && (
         <div className="px-5 pt-4">
           <motion.button

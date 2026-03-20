@@ -50,6 +50,16 @@ export interface JobPosting {
 export type RentalPropertyId = bigint;
 export type WorkEntryId = bigint;
 export type JobPostingId = bigint;
+export interface Booking {
+    id: BookingId;
+    status: BookingStatus;
+    serviceType: string;
+    workerId: bigint;
+    userId: bigint;
+    note: string;
+    createdAt: Time;
+    workerName: string;
+}
 export interface Note {
     id: NoteId;
     title: string;
@@ -101,15 +111,18 @@ export interface ScheduleEntry {
     dayOfWeek: DayOfWeek;
     notes: string;
 }
+export type BookingId = bigint;
 export type UserId = bigint;
 export type ScheduleId = bigint;
 export interface WorkerProfile {
-    id: bigint;
+    id: WorkerId;
     status: WorkerStatus;
+    latitude: number;
     userId: bigint;
     name: string;
     createdAt: Time;
     profession: string;
+    longitude: number;
     rating: number;
     phone: string;
     location: string;
@@ -124,6 +137,18 @@ export interface Notification {
     isRead: boolean;
     message: string;
     timestamp: Time;
+}
+export type WorkerId = bigint;
+export interface UserProfile {
+    userId?: bigint;
+    name: string;
+    phone: string;
+}
+export enum BookingStatus {
+    cancelled = "cancelled",
+    pending = "pending",
+    rejected = "rejected",
+    accepted = "accepted"
 }
 export enum DayOfWeek {
     tuesday = "tuesday",
@@ -169,11 +194,14 @@ export enum WorkerStatus {
     inactive = "inactive"
 }
 export interface backendInterface {
+    acceptBooking(id: BookingId): Promise<boolean>;
     applyToVacancy(vacancyId: JobVacancyId, applicantName: string, applicantPhone: string): Promise<JobApplicationId>;
     assignCallerUserRole(user: Principal, role: UserRole__1): Promise<void>;
     assignJobPosting(id: JobPostingId, workerName: string, workerPhone: string, workerAddress: string): Promise<boolean>;
+    cancelBooking(id: BookingId): Promise<boolean>;
     closeJobVacancy(id: JobVacancyId): Promise<void>;
     completeJobPosting(id: JobPostingId): Promise<boolean>;
+    createBooking(userId: bigint, workerId: bigint, workerName: string, serviceType: string, note: string): Promise<BookingId>;
     createJobPosting(title: string, description: string, date: string, startTime: bigint, endTime: bigint, paymentAmount: number, address: string): Promise<JobPostingId>;
     createJobVacancy(title: string, companyName: string, category: string, salary: string | null, location: string, description: string): Promise<JobVacancyId>;
     createNote(title: string, body: string): Promise<NoteId>;
@@ -182,7 +210,7 @@ export interface backendInterface {
     createScheduleEntry(title: string, dayOfWeek: DayOfWeek, startTime: bigint, endTime: bigint, notes: string): Promise<ScheduleId>;
     createTask(title: string, description: string, priority: Priority, dueDate: Time | null): Promise<TaskId>;
     createWorkEntry(workerName: string, date: string, workType: string, startTime: bigint, endTime: bigint, hoursWorked: number, dailyPayment: number, notes: string): Promise<WorkEntryId>;
-    createWorkerProfile(userId: bigint, name: string, profession: string, phone: string, rating: number, location: string): Promise<bigint>;
+    createWorkerProfile(userId: bigint, name: string, profession: string, phone: string, rating: number, location: string, latitude: number, longitude: number): Promise<bigint>;
     deleteJobVacancy(id: JobVacancyId): Promise<void>;
     deleteNote(noteId: NoteId): Promise<void>;
     deleteNotification(id: NotificationId): Promise<void>;
@@ -190,7 +218,9 @@ export interface backendInterface {
     deleteScheduleEntry(entryId: ScheduleId): Promise<void>;
     deleteTask(taskId: TaskId): Promise<void>;
     deleteWorkEntry(entryId: WorkEntryId): Promise<void>;
+    generateOtp(phone: string): Promise<string>;
     getActiveWorkers(): Promise<Array<WorkerProfile>>;
+    getAllJobPostings(): Promise<Array<JobPosting>>;
     getAllJobVacancies(): Promise<Array<JobVacancy>>;
     getAllNotes(): Promise<Array<Note>>;
     getAllNotifications(): Promise<Array<Notification>>;
@@ -201,8 +231,12 @@ export interface backendInterface {
     getAllWorkEntries(): Promise<Array<WorkEntry>>;
     getAllWorkerProfiles(): Promise<Array<WorkerProfile>>;
     getApplicationsForVacancy(vacancyId: JobVacancyId): Promise<Array<JobApplication>>;
+    getAssignedJobPostings(): Promise<Array<JobPosting>>;
     getAvailableJobPostings(): Promise<Array<JobPosting>>;
     getAvailableRentals(): Promise<Array<RentalProperty>>;
+    getBookingsForUser(userId: bigint): Promise<Array<Booking>>;
+    getBookingsForWorker(workerId: bigint): Promise<Array<Booking>>;
+    getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole__1>;
     getJobVacanciesByCategory(category: string): Promise<Array<JobVacancy>>;
     getJobVacanciesByLocation(location: string): Promise<Array<JobVacancy>>;
@@ -214,6 +248,7 @@ export interface backendInterface {
     getTask(taskId: TaskId): Promise<Task>;
     getUnreadCount(): Promise<bigint>;
     getUserById(id: UserId): Promise<UserAccount | null>;
+    getUserProfile(user: Principal): Promise<UserProfile | null>;
     getWorkEntriesByDate(date: string): Promise<Array<WorkEntry>>;
     getWorkEntriesByDateRange(fromDate: string, toDate: string): Promise<Array<WorkEntry>>;
     getWorkEntriesByWorker(workerName: string): Promise<Array<WorkEntry>>;
@@ -239,6 +274,8 @@ export interface backendInterface {
         __kind__: "err";
         err: string;
     }>;
+    rejectBooking(id: BookingId): Promise<boolean>;
+    saveCallerUserProfile(profile: UserProfile): Promise<void>;
     setJobPreference(workerId: string, jobId: JobPostingId, interested: boolean): Promise<void>;
     setWorkerStatus(workerId: bigint, status: WorkerStatus): Promise<boolean>;
     updateNote(noteId: NoteId, title: string, body: string): Promise<void>;
@@ -246,5 +283,7 @@ export interface backendInterface {
     updateScheduleEntry(entryId: ScheduleId, title: string, dayOfWeek: DayOfWeek, startTime: bigint, endTime: bigint, notes: string): Promise<void>;
     updateTask(taskId: TaskId, title: string, description: string, priority: Priority, dueDate: Time | null, completed: boolean): Promise<void>;
     updateWorkEntry(entryId: WorkEntryId, workerName: string, date: string, workType: string, startTime: bigint, endTime: bigint, hoursWorked: number, dailyPayment: number, notes: string): Promise<void>;
-    updateWorkerStatus(workerId: bigint, active: boolean): Promise<boolean>;
+    updateWorkerLocation(workerId: WorkerId, latitude: number, longitude: number): Promise<boolean>;
+    updateWorkerStatus(workerId: WorkerId, active: boolean): Promise<boolean>;
+    verifyOtp(phone: string, otp: string): Promise<boolean>;
 }

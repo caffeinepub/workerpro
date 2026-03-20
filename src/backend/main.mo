@@ -4,15 +4,51 @@ import Text "mo:core/Text";
 import Time "mo:core/Time";
 import Runtime "mo:core/Runtime";
 import Nat "mo:core/Nat";
-import Order "mo:core/Order";
+import Int "mo:core/Int";
 import Float "mo:core/Float";
+import Order "mo:core/Order";
+import Iter "mo:core/Iter";
+import Principal "mo:core/Principal";
+import OtpRecord "OtpRecord";
 import MixinAuthorization "authorization/MixinAuthorization";
 import AccessControl "authorization/access-control";
+
+
 
 actor {
   // Authentication System
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
+
+  // USER PROFILES (for Principal-based authentication)
+  public type UserProfile = {
+    userId : ?Nat; // Link to UserAccount if registered
+    name : Text;
+    phone : Text;
+  };
+
+  let userProfiles = Map.empty<Principal, UserProfile>();
+
+  public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view profiles");
+    };
+    userProfiles.get(caller);
+  };
+
+  public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
+    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
+      Runtime.trap("Unauthorized: Can only view your own profile");
+    };
+    userProfiles.get(user);
+  };
+
+  public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can save profiles");
+    };
+    userProfiles.add(caller, profile);
+  };
 
   // USERS
 
@@ -36,6 +72,7 @@ actor {
 
   let users = Map.empty<UserId, UserAccount>();
 
+  // Public registration - no auth required
   public shared ({ caller }) func register(name : Text, emailOrPhone : Text, passwordHash : Text, role : UserRole) : async {
     #ok : UserId;
     #err : Text;
@@ -60,6 +97,7 @@ actor {
     #ok(userId);
   };
 
+  // Public login - no auth required
   public shared ({ caller }) func login(emailOrPhone : Text, passwordHash : Text) : async {
     #ok : { userId : UserId; role : UserRole };
     #err : Text;
@@ -77,10 +115,16 @@ actor {
   };
 
   public query ({ caller }) func getUserById(id : UserId) : async ?UserAccount {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only authenticated users can view user details");
+    };
     users.get(id);
   };
 
   public query ({ caller }) func getAllUsers() : async [UserAccount] {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can view all users");
+    };
     users.values().toArray();
   };
 
@@ -113,6 +157,9 @@ actor {
   let tasks = Map.empty<TaskId, Task>();
 
   public shared ({ caller }) func createTask(title : Text, description : Text, priority : Priority, dueDate : ?Time.Time) : async TaskId {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can create tasks");
+    };
     let taskId = nextTaskId;
     let task : Task = {
       id = taskId;
@@ -128,6 +175,9 @@ actor {
   };
 
   public shared ({ caller }) func updateTask(taskId : TaskId, title : Text, description : Text, priority : Priority, dueDate : ?Time.Time, completed : Bool) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can update tasks");
+    };
     switch (tasks.get(taskId)) {
       case (null) { Runtime.trap("Task not found") };
       case (?_) {
@@ -145,11 +195,17 @@ actor {
   };
 
   public shared ({ caller }) func deleteTask(taskId : TaskId) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can delete tasks");
+    };
     if (not tasks.containsKey(taskId)) { Runtime.trap("Task not found") };
     tasks.remove(taskId);
   };
 
   public query ({ caller }) func getTask(taskId : TaskId) : async Task {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view tasks");
+    };
     switch (tasks.get(taskId)) {
       case (null) { Runtime.trap("Task not found") };
       case (?task) { task };
@@ -157,6 +213,9 @@ actor {
   };
 
   public query ({ caller }) func getAllTasks() : async [Task] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view tasks");
+    };
     tasks.values().toArray().sort();
   };
 
@@ -193,6 +252,9 @@ actor {
   let scheduleEntries = Map.empty<ScheduleId, ScheduleEntry>();
 
   public shared ({ caller }) func createScheduleEntry(title : Text, dayOfWeek : DayOfWeek, startTime : Nat, endTime : Nat, notes : Text) : async ScheduleId {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can create schedule entries");
+    };
     let entryId = nextScheduleId;
     let entry : ScheduleEntry = {
       id = entryId;
@@ -208,6 +270,9 @@ actor {
   };
 
   public shared ({ caller }) func updateScheduleEntry(entryId : ScheduleId, title : Text, dayOfWeek : DayOfWeek, startTime : Nat, endTime : Nat, notes : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can update schedule entries");
+    };
     switch (scheduleEntries.get(entryId)) {
       case (null) { Runtime.trap("Schedule entry not found") };
       case (?_) {
@@ -225,11 +290,17 @@ actor {
   };
 
   public shared ({ caller }) func deleteScheduleEntry(entryId : ScheduleId) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can delete schedule entries");
+    };
     if (not scheduleEntries.containsKey(entryId)) { Runtime.trap("Schedule entry not found") };
     scheduleEntries.remove(entryId);
   };
 
   public query ({ caller }) func getScheduleEntry(entryId : ScheduleId) : async ScheduleEntry {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view schedule entries");
+    };
     switch (scheduleEntries.get(entryId)) {
       case (null) { Runtime.trap("Schedule entry not found") };
       case (?entry) { entry };
@@ -237,6 +308,9 @@ actor {
   };
 
   public query ({ caller }) func getAllScheduleEntries() : async [ScheduleEntry] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view schedule entries");
+    };
     scheduleEntries.values().toArray().sort();
   };
 
@@ -261,6 +335,9 @@ actor {
   let notes = Map.empty<NoteId, Note>();
 
   public shared ({ caller }) func createNote(title : Text, body : Text) : async NoteId {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can create notes");
+    };
     let noteId = nextNoteId;
     let note : Note = {
       id = noteId;
@@ -274,6 +351,9 @@ actor {
   };
 
   public shared ({ caller }) func updateNote(noteId : NoteId, title : Text, body : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can update notes");
+    };
     switch (notes.get(noteId)) {
       case (null) { Runtime.trap("Note not found") };
       case (?existingNote) {
@@ -289,11 +369,17 @@ actor {
   };
 
   public shared ({ caller }) func deleteNote(noteId : NoteId) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can delete notes");
+    };
     if (not notes.containsKey(noteId)) { Runtime.trap("Note not found") };
     notes.remove(noteId);
   };
 
   public query ({ caller }) func getNote(noteId : NoteId) : async Note {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view notes");
+    };
     switch (notes.get(noteId)) {
       case (null) { Runtime.trap("Note not found") };
       case (?note) { note };
@@ -301,6 +387,9 @@ actor {
   };
 
   public query ({ caller }) func getAllNotes() : async [Note] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view notes");
+    };
     notes.values().toArray().sort();
   };
 
@@ -331,6 +420,9 @@ actor {
   let workEntries = Map.empty<WorkEntryId, WorkEntry>();
 
   public shared ({ caller }) func createWorkEntry(workerName : Text, date : Text, workType : Text, startTime : Nat, endTime : Nat, hoursWorked : Float, dailyPayment : Float, notes : Text) : async WorkEntryId {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can create work entries");
+    };
     let entryId = nextWorkEntryId;
     let entry : WorkEntry = {
       id = entryId;
@@ -350,6 +442,9 @@ actor {
   };
 
   public shared ({ caller }) func updateWorkEntry(entryId : WorkEntryId, workerName : Text, date : Text, workType : Text, startTime : Nat, endTime : Nat, hoursWorked : Float, dailyPayment : Float, notes : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can update work entries");
+    };
     switch (workEntries.get(entryId)) {
       case (null) { Runtime.trap("Work entry not found") };
       case (?existingEntry) {
@@ -371,11 +466,17 @@ actor {
   };
 
   public shared ({ caller }) func deleteWorkEntry(entryId : WorkEntryId) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can delete work entries");
+    };
     if (not workEntries.containsKey(entryId)) { Runtime.trap("Work entry not found") };
     workEntries.remove(entryId);
   };
 
   public query ({ caller }) func getWorkEntry(entryId : WorkEntryId) : async WorkEntry {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view work entries");
+    };
     switch (workEntries.get(entryId)) {
       case (null) { Runtime.trap("Work entry not found") };
       case (?entry) { entry };
@@ -383,10 +484,16 @@ actor {
   };
 
   public query ({ caller }) func getAllWorkEntries() : async [WorkEntry] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view work entries");
+    };
     workEntries.values().toArray().sort();
   };
 
   public query ({ caller }) func getWorkEntriesByDate(date : Text) : async [WorkEntry] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view work entries");
+    };
     workEntries.values().toArray().filter(
       func(entry) {
         entry.date == date;
@@ -395,6 +502,9 @@ actor {
   };
 
   public query ({ caller }) func getWorkEntriesByWorker(workerName : Text) : async [WorkEntry] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view work entries");
+    };
     workEntries.values().toArray().filter(
       func(entry) {
         entry.workerName == workerName;
@@ -403,6 +513,9 @@ actor {
   };
 
   public query ({ caller }) func getWorkEntriesByDateRange(fromDate : Text, toDate : Text) : async [WorkEntry] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view work entries");
+    };
     workEntries.values().toArray().filter(
       func(entry) {
         entry.date >= fromDate and entry.date <= toDate;
@@ -441,6 +554,9 @@ actor {
   let jobPostings = Map.empty<JobPostingId, JobPosting>();
 
   public shared ({ caller }) func createJobPosting(title : Text, description : Text, date : Text, startTime : Int, endTime : Int, paymentAmount : Float, address : Text) : async JobPostingId {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can create job postings");
+    };
     let jobId = nextJobPostingId;
     let job : JobPosting = {
       id = jobId;
@@ -463,6 +579,7 @@ actor {
   };
 
   public query ({ caller }) func getAvailableJobPostings() : async [JobPosting] {
+    // Public access - anyone can view available jobs
     jobPostings.values().toArray().filter(
       func(job) {
         job.status == #available;
@@ -470,7 +587,28 @@ actor {
     );
   };
 
+  public query ({ caller }) func getAllJobPostings() : async [JobPosting] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view all job postings");
+    };
+    jobPostings.values().toArray();
+  };
+
+  public query ({ caller }) func getAssignedJobPostings() : async [JobPosting] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view assigned job postings");
+    };
+    jobPostings.values().toArray().filter(
+      func(job) {
+        job.status == #assigned;
+      }
+    );
+  };
+
   public shared ({ caller }) func assignJobPosting(id : JobPostingId, workerName : Text, workerPhone : Text, workerAddress : Text) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can assign job postings");
+    };
     switch (jobPostings.get(id)) {
       case (null) { false };
       case (?job) {
@@ -501,6 +639,9 @@ actor {
   };
 
   public shared ({ caller }) func completeJobPosting(id : JobPostingId) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can complete job postings");
+    };
     switch (jobPostings.get(id)) {
       case (null) { false };
       case (?job) {
@@ -547,6 +688,9 @@ actor {
   let jobPreferences = Map.empty<Text, JobPreference>();
 
   public shared ({ caller }) func setJobPreference(workerId : Text, jobId : JobPostingId, interested : Bool) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can set job preferences");
+    };
     let key = workerId # "_" # jobId.toText();
     let pref : JobPreference = {
       workerId;
@@ -557,6 +701,9 @@ actor {
   };
 
   public query ({ caller }) func getNotInterestedJobIds(workerId : Text) : async [JobPostingId] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view job preferences");
+    };
     jobPreferences.values().toArray().filter(
       func(pref : JobPreference) : Bool {
         pref.workerId == workerId and pref.status == #notInterested;
@@ -582,6 +729,9 @@ actor {
   let notifications = Map.empty<NotificationId, Notification>();
 
   public shared ({ caller }) func createNotification(title : Text, message : Text, notificationType : Text, jobId : Nat) : async NotificationId {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can create notifications");
+    };
     let notifId = nextNotificationId;
     let notif : Notification = {
       id = notifId;
@@ -598,16 +748,25 @@ actor {
   };
 
   public query ({ caller }) func getAllNotifications() : async [Notification] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view notifications");
+    };
     notifications.values().toArray().sort(func(a : Notification, b : Notification) : Order.Order {
       Nat.compare(a.id, b.id);
     });
   };
 
   public query ({ caller }) func getUnreadCount() : async Nat {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view unread count");
+    };
     notifications.values().toArray().filter(func(n : Notification) : Bool { not n.isRead }).size();
   };
 
   public shared ({ caller }) func markNotificationRead(id : NotificationId) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can mark notifications as read");
+    };
     switch (notifications.get(id)) {
       case (null) { Runtime.trap("Notification not found") };
       case (?n) {
@@ -626,6 +785,9 @@ actor {
   };
 
   public shared ({ caller }) func markAllNotificationsRead() : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can mark notifications as read");
+    };
     for ((id, n) in notifications.entries()) {
       let updated : Notification = {
         id = n.id;
@@ -641,6 +803,9 @@ actor {
   };
 
   public shared ({ caller }) func deleteNotification(id : NotificationId) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can delete notifications");
+    };
     if (not notifications.containsKey(id)) { Runtime.trap("Notification not found") };
     notifications.remove(id);
   };
@@ -690,6 +855,7 @@ actor {
   };
 
   public query ({ caller }) func getOpenJobVacancies() : async [JobVacancy] {
+    // Public access - anyone can view open vacancies
     jobVacancies.values().toArray().filter(
       func(vacancy) {
         vacancy.status == #open;
@@ -698,10 +864,14 @@ actor {
   };
 
   public query ({ caller }) func getAllJobVacancies() : async [JobVacancy] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view all job vacancies");
+    };
     jobVacancies.values().toArray();
   };
 
   public query ({ caller }) func getJobVacanciesByCategory(category : Text) : async [JobVacancy] {
+    // Public access - anyone can search by category
     jobVacancies.values().toArray().filter(
       func(vacancy) {
         vacancy.category == category;
@@ -710,6 +880,7 @@ actor {
   };
 
   public query ({ caller }) func getJobVacanciesByLocation(location : Text) : async [JobVacancy] {
+    // Public access - anyone can search by location
     jobVacancies.values().toArray().filter(
       func(vacancy) {
         vacancy.location == location;
@@ -718,6 +889,9 @@ actor {
   };
 
   public shared ({ caller }) func closeJobVacancy(id : JobVacancyId) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can close job vacancies");
+    };
     switch (jobVacancies.get(id)) {
       case (null) { Runtime.trap("Job vacancy not found") };
       case (?vacancy) {
@@ -738,6 +912,9 @@ actor {
   };
 
   public shared ({ caller }) func deleteJobVacancy(id : JobVacancyId) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can delete job vacancies");
+    };
     if (not jobVacancies.containsKey(id)) {
       Runtime.trap("Job vacancy not found");
     };
@@ -760,6 +937,9 @@ actor {
   var nextApplicationId = 0;
 
   public shared ({ caller }) func applyToVacancy(vacancyId : JobVacancyId, applicantName : Text, applicantPhone : Text) : async JobApplicationId {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can apply to vacancies");
+    };
     switch (jobVacancies.get(vacancyId)) {
       case (null) {
         Runtime.trap("Job vacancy not found");
@@ -785,6 +965,9 @@ actor {
   };
 
   public query ({ caller }) func getApplicationsForVacancy(vacancyId : JobVacancyId) : async [JobApplication] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view applications");
+    };
     jobApplications.values().toArray().filter(
       func(app) {
         app.vacancyId == vacancyId;
@@ -837,6 +1020,7 @@ actor {
   };
 
   public query ({ caller }) func getAvailableRentals() : async [RentalProperty] {
+    // Public access - anyone can view available rentals
     rentals.values().toArray().filter(
       func(rental) {
         rental.status == #available;
@@ -845,10 +1029,14 @@ actor {
   };
 
   public query ({ caller }) func getAllRentals() : async [RentalProperty] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view all rentals");
+    };
     rentals.values().toArray();
   };
 
   public query ({ caller }) func getRentalsByLocation(location : Text) : async [RentalProperty] {
+    // Public access - anyone can search by location
     rentals.values().toArray().filter(
       func(rental) {
         rental.location == location;
@@ -857,6 +1045,9 @@ actor {
   };
 
   public shared ({ caller }) func updateRentalStatus(id : RentalPropertyId, status : RentalStatus) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can update rental status");
+    };
     switch (rentals.get(id)) {
       case (null) { Runtime.trap("Rental property not found") };
       case (?rental) {
@@ -878,6 +1069,9 @@ actor {
   };
 
   public shared ({ caller }) func deleteRentalProperty(id : RentalPropertyId) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can delete rental properties");
+    };
     if (not rentals.containsKey(id)) {
       Runtime.trap("Rental property not found");
     };
@@ -897,20 +1091,25 @@ actor {
   };
 
   type WorkerProfile = {
-    id : Nat;
+    id : WorkerId;
     userId : Nat;
     name : Text;
     profession : Text;
     phone : Text;
     rating : Float;
     location : Text;
+    latitude : Float;
+    longitude : Float;
     status : WorkerStatus;
     createdAt : Time.Time;
   };
 
-  let workers = Map.empty<Nat, WorkerProfile>();
+  let workers = Map.empty<WorkerId, WorkerProfile>();
 
-  public shared ({ caller }) func createWorkerProfile(userId : Nat, name : Text, profession : Text, phone : Text, rating : Float, location : Text) : async Nat {
+  public shared ({ caller }) func createWorkerProfile(userId : Nat, name : Text, profession : Text, phone : Text, rating : Float, location : Text, latitude : Float, longitude : Float) : async Nat {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can create worker profiles");
+    };
     let workerId = nextWorkerId;
     let profile : WorkerProfile = {
       id = workerId;
@@ -920,6 +1119,8 @@ actor {
       phone;
       rating;
       location;
+      latitude;
+      longitude;
       status = #active;
       createdAt = Time.now();
     };
@@ -929,6 +1130,9 @@ actor {
   };
 
   public shared ({ caller }) func setWorkerStatus(workerId : Nat, status : WorkerStatus) : async Bool {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can set worker status");
+    };
     switch (workers.get(workerId)) {
       case (null) { false };
       case (?worker) {
@@ -940,6 +1144,8 @@ actor {
           phone = worker.phone;
           rating = worker.rating;
           location = worker.location;
+          latitude = worker.latitude;
+          longitude = worker.longitude;
           status;
           createdAt = worker.createdAt;
         };
@@ -949,28 +1155,10 @@ actor {
     };
   };
 
-  public query ({ caller }) func getActiveWorkers() : async [WorkerProfile] {
-    workers.values().toArray().filter(
-      func(worker) {
-        worker.status == #active;
-      }
-    );
-  };
-
-  public query ({ caller }) func getAllWorkerProfiles() : async [WorkerProfile] {
-    workers.values().toArray();
-  };
-
-  public query ({ caller }) func getWorkerProfileByUserId(userId : Nat) : async ?WorkerProfile {
-    for ((id, worker) in workers.entries()) {
-      if (worker.userId == userId) {
-        return ?worker;
-      };
+  public shared ({ caller }) func updateWorkerStatus(workerId : WorkerId, active : Bool) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can update worker status");
     };
-    null;
-  };
-
-  public shared ({ caller }) func updateWorkerStatus(workerId : Nat, active : Bool) : async Bool {
     switch (workers.get(workerId)) {
       case (null) { false };
       case (?worker) {
@@ -984,10 +1172,255 @@ actor {
           phone = worker.phone;
           rating = worker.rating;
           location = worker.location;
+          latitude = worker.latitude;
+          longitude = worker.longitude;
           status = newStatus;
           createdAt = worker.createdAt;
         };
         workers.add(workerId, updated);
+        true;
+      };
+    };
+  };
+
+  public shared ({ caller }) func updateWorkerLocation(workerId : WorkerId, latitude : Float, longitude : Float) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can update worker location");
+    };
+    switch (workers.get(workerId)) {
+      case (null) { false };
+      case (?worker) {
+        let updated : WorkerProfile = {
+          id = workerId;
+          userId = worker.userId;
+          name = worker.name;
+          profession = worker.profession;
+          phone = worker.phone;
+          rating = worker.rating;
+          location = worker.location;
+          latitude;
+          longitude;
+          status = worker.status;
+          createdAt = worker.createdAt;
+        };
+        workers.add(workerId, updated);
+        true;
+      };
+    };
+  };
+
+  public query ({ caller }) func getActiveWorkers() : async [WorkerProfile] {
+    // Public access - anyone can view active workers
+    workers.values().toArray().filter(
+      func(worker) {
+        worker.status == #active;
+      }
+    );
+  };
+
+  public query ({ caller }) func getAllWorkerProfiles() : async [WorkerProfile] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view all worker profiles");
+    };
+    workers.values().toArray();
+  };
+
+  public query ({ caller }) func getWorkerProfileByUserId(userId : Nat) : async ?WorkerProfile {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view worker profiles");
+    };
+    for ((id, worker) in workers.entries()) {
+      if (worker.userId == userId) {
+        return ?worker;
+      };
+    };
+    null;
+  };
+
+  ///////////////////////////////
+  /// OTP VERIFICATION MODULE ///
+  ///////////////////////////////
+
+  type OtpRecord = {
+    phone : Text;
+    otp : Text;
+    createdAt : Time.Time;
+    used : Bool;
+  };
+
+  let otpRecords = Map.empty<Text, OtpRecord>();
+
+  // Public - OTP generation doesn't require auth
+  public shared ({ caller }) func generateOtp(phone : Text) : async Text {
+    let seed : Time.Time = Time.now();
+    let codeInt = ((seed % 900_000_000_000_000) / 1_234_567) % 1_000_000;
+    let code = codeInt.toText();
+    let paddedCode = if (code.size() < 6) { "0" # code } else { code };
+
+    let otpRecord : OtpRecord = {
+      phone;
+      otp = paddedCode;
+      createdAt = seed;
+      used = false;
+    };
+    otpRecords.add(phone, otpRecord);
+
+    paddedCode;
+  };
+
+  // Public - OTP verification doesn't require auth
+  public shared ({ caller }) func verifyOtp(phone : Text, otp : Text) : async Bool {
+    switch (otpRecords.get(phone)) {
+      case (null) { false };
+      case (?record) {
+        if (record.used) { return false };
+        if (record.otp != otp) { return false };
+        let now = Time.now();
+        let age = now - record.createdAt;
+        let fiveMinutesNanos = 5 * 60 * 1_000_000_000;
+
+        if (age > fiveMinutesNanos) { return false };
+        let updated : OtpRecord = {
+          phone = record.phone;
+          otp = record.otp;
+          createdAt = record.createdAt;
+          used = true;
+        };
+        otpRecords.add(phone, updated);
+        true;
+      };
+    };
+  };
+
+  /////////////////////////
+  /// BOOKING SYSTEM //////
+  /////////////////////////
+
+  type BookingStatus = {
+    #pending;
+    #accepted;
+    #rejected;
+    #cancelled;
+  };
+
+  type Booking = {
+    id : BookingId;
+    userId : Nat;
+    workerId : Nat;
+    workerName : Text;
+    serviceType : Text;
+    note : Text;
+    status : BookingStatus;
+    createdAt : Time.Time;
+  };
+
+  type BookingId = Nat;
+  var nextBookingId = 0;
+
+  let bookings = Map.empty<BookingId, Booking>();
+
+  public shared ({ caller }) func createBooking(userId : Nat, workerId : Nat, workerName : Text, serviceType : Text, note : Text) : async BookingId {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can create bookings");
+    };
+    let bookingId = nextBookingId;
+    let booking : Booking = {
+      id = bookingId;
+      userId;
+      workerId;
+      workerName;
+      serviceType;
+      note;
+      status = #pending;
+      createdAt = Time.now();
+    };
+    bookings.add(bookingId, booking);
+    nextBookingId += 1;
+    bookingId;
+  };
+
+  public query ({ caller }) func getBookingsForWorker(workerId : Nat) : async [Booking] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view bookings");
+    };
+    bookings.values().toArray().filter(
+      func(b) { b.workerId == workerId }
+    );
+  };
+
+  public query ({ caller }) func getBookingsForUser(userId : Nat) : async [Booking] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view bookings");
+    };
+    bookings.values().toArray().filter(
+      func(b) { b.userId == userId }
+    );
+  };
+
+  public shared ({ caller }) func acceptBooking(id : BookingId) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can accept bookings");
+    };
+    switch (bookings.get(id)) {
+      case (null) { false };
+      case (?booking) {
+        let updated : Booking = {
+          id = booking.id;
+          userId = booking.userId;
+          workerId = booking.workerId;
+          workerName = booking.workerName;
+          serviceType = booking.serviceType;
+          note = booking.note;
+          status = #accepted;
+          createdAt = booking.createdAt;
+        };
+        bookings.add(id, updated);
+        true;
+      };
+    };
+  };
+
+  public shared ({ caller }) func rejectBooking(id : BookingId) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can reject bookings");
+    };
+    switch (bookings.get(id)) {
+      case (null) { false };
+      case (?booking) {
+        let updated : Booking = {
+          id = booking.id;
+          userId = booking.userId;
+          workerId = booking.workerId;
+          workerName = booking.workerName;
+          serviceType = booking.serviceType;
+          note = booking.note;
+          status = #rejected;
+          createdAt = booking.createdAt;
+        };
+        bookings.add(id, updated);
+        true;
+      };
+    };
+  };
+
+  public shared ({ caller }) func cancelBooking(id : BookingId) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can cancel bookings");
+    };
+    switch (bookings.get(id)) {
+      case (null) { false };
+      case (?booking) {
+        let updated : Booking = {
+          id = booking.id;
+          userId = booking.userId;
+          workerId = booking.workerId;
+          workerName = booking.workerName;
+          serviceType = booking.serviceType;
+          note = booking.note;
+          status = #cancelled;
+          createdAt = booking.createdAt;
+        };
+        bookings.add(id, updated);
         true;
       };
     };

@@ -14,11 +14,13 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 export const SESSION_KEY = "workerPro_session";
+export const SESSION_EXPIRY_DAYS = 7;
 
 export interface UserSession {
   userId: bigint;
   role: "admin" | "user" | "worker";
   name: string;
+  expiresAt: number;
 }
 
 export function getSession(): UserSession | null {
@@ -26,6 +28,11 @@ export function getSession(): UserSession | null {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
+    // Check expiry
+    if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
     // userId is stored as string (bigint can't be JSON serialized)
     return { ...parsed, userId: BigInt(parsed.userId) };
   } catch {
@@ -34,9 +41,14 @@ export function getSession(): UserSession | null {
 }
 
 export function saveSession(session: UserSession) {
+  const expiresAt = Date.now() + SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
   localStorage.setItem(
     SESSION_KEY,
-    JSON.stringify({ ...session, userId: session.userId.toString() }),
+    JSON.stringify({
+      ...session,
+      userId: session.userId.toString(),
+      expiresAt,
+    }),
   );
 }
 

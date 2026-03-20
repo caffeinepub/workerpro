@@ -1,7 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, Lock, Phone, Zap } from "lucide-react";
+import {
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  Lock,
+  Phone,
+  Shield,
+  User,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -16,11 +24,17 @@ import {
 interface LoginScreenProps {
   onLoginSuccess: (session: UserSession) => void;
   onGoToRegister: () => void;
+  loginMode?: "admin" | "user";
+  onBack?: () => void;
+  onForgotPassword?: () => void;
 }
 
 export default function LoginScreen({
   onLoginSuccess,
   onGoToRegister,
+  loginMode = "user",
+  onBack,
+  onForgotPassword,
 }: LoginScreenProps) {
   const { actor } = useActor();
   const [emailOrPhone, setEmailOrPhone] = useState("");
@@ -32,12 +46,14 @@ export default function LoginScreen({
     password?: string;
   }>({});
 
+  const isAdmin = loginMode === "admin";
+
   const validate = () => {
     const errs: { emailOrPhone?: string; password?: string } = {};
     if (!emailOrPhone.trim()) errs.emailOrPhone = "Email or phone is required";
     if (!password) errs.password = "Password is required";
-    else if (password.length < 6)
-      errs.password = "Password must be at least 6 characters";
+    else if (password.length < 8)
+      errs.password = "Password must be at least 8 characters";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -54,21 +70,24 @@ export default function LoginScreen({
       const result = await actor.login(emailOrPhone.trim(), hashed);
       if (result.__kind__ === "ok") {
         const { userId, role } = result.ok;
-        // Determine role string
         let roleStr: "admin" | "user" | "worker" = "user";
         if (role === UserRole.admin) roleStr = "admin";
         else if (role === UserRole.worker) roleStr = "worker";
 
-        // Fetch name from getUserById
         let name = emailOrPhone.trim();
         try {
           const userAccount = await actor.getUserById(userId);
           if (userAccount) name = userAccount.name;
         } catch {
-          // fallback to emailOrPhone
+          // fallback
         }
 
-        const session: UserSession = { userId, role: roleStr, name };
+        const session: UserSession = {
+          userId,
+          role: roleStr,
+          name,
+          expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        };
         saveSession(session);
         toast.success(`Welcome back, ${name}!`);
         onLoginSuccess(session);
@@ -83,11 +102,30 @@ export default function LoginScreen({
   };
 
   const handleForgotPassword = () => {
-    toast.info("Please contact support to reset your password");
+    if (onForgotPassword) {
+      onForgotPassword();
+    } else {
+      toast.info("Please contact support to reset your password");
+    }
   };
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-5 py-8">
+      {/* Back Button */}
+      {onBack && (
+        <div className="w-full max-w-sm mb-4">
+          <button
+            type="button"
+            data-ocid="login.back.button"
+            onClick={onBack}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </button>
+        </div>
+      )}
+
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -95,14 +133,22 @@ export default function LoginScreen({
       >
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-3">
-            <Zap className="w-8 h-8 text-primary" />
+          <div
+            className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-3 ${
+              isAdmin ? "bg-orange-100" : "bg-primary/10"
+            }`}
+          >
+            {isAdmin ? (
+              <Shield className="w-8 h-8 text-orange-600" />
+            ) : (
+              <User className="w-8 h-8 text-primary" />
+            )}
           </div>
           <h1 className="font-display text-2xl font-bold text-foreground">
-            Worker Pro
+            {isAdmin ? "Admin Login" : "User Login"}
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Sign in to your account
+            {isAdmin ? "Access admin dashboard" : "Sign in to your account"}
           </p>
         </div>
 
@@ -141,7 +187,7 @@ export default function LoginScreen({
                 id="login-password"
                 data-ocid="login.input"
                 type={showPassword ? "text" : "password"}
-                placeholder="Minimum 6 characters"
+                placeholder="Minimum 8 characters"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="pl-10 pr-10 rounded-xl"
@@ -184,7 +230,9 @@ export default function LoginScreen({
             data-ocid="login.submit_button"
             onClick={handleLogin}
             disabled={isLoading}
-            className="w-full rounded-xl h-11"
+            className={`w-full rounded-xl h-11 ${
+              isAdmin ? "bg-orange-600 hover:bg-orange-700 text-white" : ""
+            }`}
           >
             {isLoading ? (
               <span className="flex items-center gap-2">
@@ -197,17 +245,19 @@ export default function LoginScreen({
           </Button>
         </div>
 
-        <p className="text-center text-sm text-muted-foreground mt-5">
-          Don't have an account?{" "}
-          <button
-            type="button"
-            data-ocid="login.register.link"
-            onClick={onGoToRegister}
-            className="text-primary font-semibold hover:underline"
-          >
-            Sign Up
-          </button>
-        </p>
+        {!isAdmin && (
+          <p className="text-center text-sm text-muted-foreground mt-5">
+            Don't have an account?{" "}
+            <button
+              type="button"
+              data-ocid="login.register.link"
+              onClick={onGoToRegister}
+              className="text-primary font-semibold hover:underline"
+            >
+              Sign Up
+            </button>
+          </p>
+        )}
       </motion.div>
     </div>
   );

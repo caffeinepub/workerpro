@@ -354,8 +354,9 @@ function ListPropertyTab() {
       setPrice("");
       setRooms("");
       setDescription("");
-    } catch {
-      toast.error("Failed to list property");
+    } catch (err) {
+      console.error("Failed to list property:", err);
+      toast.error("Failed to list property. Please try again.");
     }
   };
 

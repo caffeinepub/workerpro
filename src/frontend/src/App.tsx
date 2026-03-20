@@ -22,15 +22,19 @@ import AddWorkPage from "./pages/AddWorkPage";
 import AdminWorkersPage from "./pages/AdminWorkersPage";
 import BookingsPage from "./pages/BookingsPage";
 import DailyWork from "./pages/DailyWork";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import HomePage from "./pages/Home";
 import JobBoard from "./pages/JobBoard";
 import JobsPage from "./pages/JobsPage";
 import LoginScreen from "./pages/LoginScreen";
+import NearbyPage from "./pages/NearbyPage";
 import NotificationsPage from "./pages/Notifications";
 import ProfilePage from "./pages/ProfilePage";
 import RegisterScreen from "./pages/RegisterScreen";
 import RentalsPage from "./pages/RentalsPage";
 import Reports from "./pages/Reports";
+import RoleSelectScreen from "./pages/RoleSelectScreen";
+import SettingsPage from "./pages/SettingsPage";
 import WorkersPage from "./pages/Workers";
 
 const queryClient = new QueryClient();
@@ -44,15 +48,13 @@ type DeepPage =
   | "notifications"
   | "addwork"
   | "messages"
-  | "adminworkers";
+  | "adminworkers"
+  | "settings"
+  | "nearby";
 type Page = BottomTab | DeepPage;
-type AuthScreen = "login" | "register";
+type AuthScreen = "roleselect" | "login" | "register" | "forgotpassword";
 
-const BOTTOM_TABS: {
-  id: BottomTab;
-  label: string;
-  icon: typeof Home;
-}[] = [
+const BOTTOM_TABS: { id: BottomTab; label: string; icon: typeof Home }[] = [
   { id: "home", label: "Home", icon: Home },
   { id: "jobs", label: "Jobs", icon: Briefcase },
   { id: "rentals", label: "Rentals", icon: Building2 },
@@ -72,7 +74,8 @@ function AppLayout() {
   const [session, setSession] = useState<UserSession | null>(() =>
     getSession(),
   );
-  const [authScreen, setAuthScreen] = useState<AuthScreen>("login");
+  const [authScreen, setAuthScreen] = useState<AuthScreen>("roleselect");
+  const [loginMode, setLoginMode] = useState<"admin" | "user">("user");
   const [page, setPage] = useState<Page>("home");
   const [prefillCategory, setPrefillCategory] = useState("");
 
@@ -91,7 +94,7 @@ function AppLayout() {
   const handleLogout = () => {
     clearSession();
     setSession(null);
-    setAuthScreen("login");
+    setAuthScreen("roleselect");
     setPage("home");
   };
 
@@ -104,13 +107,32 @@ function AppLayout() {
     setPage("addwork");
   };
 
-  // Show auth screens if no session
   if (!session) {
     return (
       <div className="max-w-lg mx-auto relative">
         <Toaster richColors position="top-center" />
         <AnimatePresence mode="wait">
-          {authScreen === "login" ? (
+          {authScreen === "roleselect" ? (
+            <motion.div
+              key="roleselect"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.2 }}
+            >
+              <RoleSelectScreen
+                onSelectAdmin={() => {
+                  setLoginMode("admin");
+                  setAuthScreen("login");
+                }}
+                onSelectUser={() => {
+                  setLoginMode("user");
+                  setAuthScreen("login");
+                }}
+                onGoToRegister={() => setAuthScreen("register")}
+              />
+            </motion.div>
+          ) : authScreen === "login" ? (
             <motion.div
               key="login"
               initial={{ opacity: 0, x: -20 }}
@@ -121,7 +143,20 @@ function AppLayout() {
               <LoginScreen
                 onLoginSuccess={handleLoginSuccess}
                 onGoToRegister={() => setAuthScreen("register")}
+                loginMode={loginMode}
+                onBack={() => setAuthScreen("roleselect")}
+                onForgotPassword={() => setAuthScreen("forgotpassword")}
               />
+            </motion.div>
+          ) : authScreen === "forgotpassword" ? (
+            <motion.div
+              key="forgotpassword"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              <ForgotPasswordPage onBack={() => setAuthScreen("login")} />
             </motion.div>
           ) : (
             <motion.div
@@ -134,6 +169,7 @@ function AppLayout() {
               <RegisterScreen
                 onRegisterSuccess={handleLoginSuccess}
                 onGoToLogin={() => setAuthScreen("login")}
+                onBack={() => setAuthScreen("roleselect")}
               />
             </motion.div>
           )}
@@ -154,15 +190,15 @@ function AppLayout() {
             Worker Pro
           </span>
         </div>
-
         <button
           type="button"
-          className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium"
+          onClick={() => navigate("nearby")}
+          className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium hover:bg-primary/10 hover:text-primary transition-colors"
+          data-ocid="header.nearby.button"
         >
           <MapPin className="w-3 h-3" />
           Nearby
         </button>
-
         <div className="flex items-center gap-1">
           <NotificationBell onOpenCenter={() => navigate("notifications")} />
         </div>
@@ -179,13 +215,19 @@ function AppLayout() {
             transition={{ duration: 0.18 }}
             className="min-h-full"
           >
-            {page === "home" && <HomePage onBookWorker={handleBookWorker} />}
+            {page === "home" && (
+              <HomePage
+                onBookWorker={handleBookWorker}
+                session={session}
+                onNearby={() => navigate("nearby")}
+              />
+            )}
             {page === "jobs" && <JobsPage />}
             {page === "rentals" && <RentalsPage />}
-            {page === "bookings" && <BookingsPage />}
+            {page === "bookings" && <BookingsPage session={session} />}
             {page === "profile" && (
               <ProfilePage
-                onNavigate={(p) => navigate(p)}
+                onNavigate={(p) => navigate(p as Page)}
                 session={session}
                 onLogout={handleLogout}
               />
@@ -199,6 +241,16 @@ function AppLayout() {
             {page === "reports" && <Reports />}
             {page === "notifications" && <NotificationsPage />}
             {page === "adminworkers" && <AdminWorkersPage />}
+            {page === "settings" && session && (
+              <SettingsPage
+                session={session}
+                onBack={() => navigate("profile")}
+                onLogout={handleLogout}
+              />
+            )}
+            {page === "nearby" && (
+              <NearbyPage onBack={() => navigate("home")} />
+            )}
           </motion.div>
         </AnimatePresence>
       </main>
@@ -217,19 +269,13 @@ function AppLayout() {
               type="button"
               data-ocid={`nav.${tab.id}.link`}
               onClick={() => navigate(tab.id)}
-              className={`flex flex-col items-center justify-center gap-0.5 px-3 py-2 rounded-xl transition-all ${
-                isActive ? "bottom-nav-active" : "bottom-nav-inactive"
-              }`}
+              className={`flex flex-col items-center justify-center gap-0.5 px-3 py-2 rounded-xl transition-all ${isActive ? "bottom-nav-active" : "bottom-nav-inactive"}`}
             >
               <tab.icon
-                className={`w-5 h-5 transition-transform ${
-                  isActive ? "scale-110" : ""
-                }`}
+                className={`w-5 h-5 transition-transform ${isActive ? "scale-110" : ""}`}
               />
               <span
-                className={`text-[10px] font-medium ${
-                  isActive ? "text-primary" : "text-muted-foreground"
-                }`}
+                className={`text-[10px] font-medium ${isActive ? "text-primary" : "text-muted-foreground"}`}
               >
                 {tab.label}
               </span>

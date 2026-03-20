@@ -1,5 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Loader2, ShieldCheck, Users } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
@@ -7,24 +9,38 @@ import { WorkerStatus } from "../backend.d";
 import {
   useGetAllWorkers,
   useSetWorkerStatus,
+  useUpdateWorkerStatus,
 } from "../hooks/useWorkerQueries";
 
 export default function AdminWorkersPage() {
   const { data: workers = [], isLoading } = useGetAllWorkers();
   const setStatus = useSetWorkerStatus();
+  const updateStatus = useUpdateWorkerStatus();
 
-  const handleSetStatus = async (workerId: bigint, status: WorkerStatus) => {
+  const handleToggle = async (workerId: bigint, active: boolean) => {
     try {
-      await setStatus.mutateAsync({ workerId, status });
-      const label =
-        status === WorkerStatus.active
-          ? "Active"
-          : status === WorkerStatus.inactive
-            ? "Inactive"
-            : "Blocked";
-      toast.success(`Worker set to ${label}`);
+      await updateStatus.mutateAsync({ workerId, active });
+      toast.success(`Worker set to ${active ? "Active" : "Inactive"}`);
     } catch {
       toast.error("Failed to update status");
+    }
+  };
+
+  const handleBlock = async (workerId: bigint) => {
+    try {
+      await setStatus.mutateAsync({ workerId, status: WorkerStatus.blocked });
+      toast.success("Worker blocked");
+    } catch {
+      toast.error("Failed to block worker");
+    }
+  };
+
+  const handleUnblock = async (workerId: bigint) => {
+    try {
+      await setStatus.mutateAsync({ workerId, status: WorkerStatus.inactive });
+      toast.success("Worker unblocked");
+    } catch {
+      toast.error("Failed to unblock worker");
     }
   };
 
@@ -47,6 +63,8 @@ export default function AdminWorkersPage() {
       </Badge>
     );
   };
+
+  const isPending = setStatus.isPending || updateStatus.isPending;
 
   return (
     <div className="flex flex-col min-h-full pb-20">
@@ -93,7 +111,8 @@ export default function AdminWorkersPage() {
                 data-ocid={`admin_workers.item.${idx + 1}`}
                 className="worker-card p-4"
               >
-                <div className="flex items-start justify-between gap-3 mb-3">
+                {/* Header row: avatar + name + status badge */}
+                <div className="flex items-center justify-between gap-3 mb-3">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                       <span className="text-primary font-bold text-sm">
@@ -112,53 +131,60 @@ export default function AdminWorkersPage() {
                   {getStatusBadge(worker.status)}
                 </div>
 
-                <div className="flex gap-2 flex-wrap">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    data-ocid={`admin_workers.set_active.button.${idx + 1}`}
-                    disabled={
-                      worker.status === WorkerStatus.active ||
-                      setStatus.isPending
-                    }
-                    onClick={() =>
-                      handleSetStatus(worker.id, WorkerStatus.active)
-                    }
-                    className="text-xs h-7 rounded-lg border-green-300 text-green-700 hover:bg-green-50 disabled:opacity-40"
-                  >
-                    Set Active
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    data-ocid={`admin_workers.set_inactive.button.${idx + 1}`}
-                    disabled={
-                      worker.status === WorkerStatus.inactive ||
-                      setStatus.isPending
-                    }
-                    onClick={() =>
-                      handleSetStatus(worker.id, WorkerStatus.inactive)
-                    }
-                    className="text-xs h-7 rounded-lg border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-                  >
-                    Set Inactive
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    data-ocid={`admin_workers.block.button.${idx + 1}`}
-                    disabled={
-                      worker.status === WorkerStatus.blocked ||
-                      setStatus.isPending
-                    }
-                    onClick={() =>
-                      handleSetStatus(worker.id, WorkerStatus.blocked)
-                    }
-                    className="text-xs h-7 rounded-lg border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-40"
-                  >
-                    Block
-                  </Button>
-                </div>
+                {/* Controls row */}
+                {worker.status === WorkerStatus.blocked ? (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-red-600 font-medium">
+                      Worker is blocked
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      data-ocid={`admin_workers.secondary_button.${idx + 1}`}
+                      disabled={isPending}
+                      onClick={() => handleUnblock(worker.id)}
+                      className="text-xs h-7 rounded-lg border-gray-300 text-gray-600 hover:bg-gray-50"
+                    >
+                      Unblock
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <Switch
+                        id={`worker-toggle-${worker.id.toString()}`}
+                        data-ocid={`admin_workers.toggle.${idx + 1}`}
+                        checked={worker.status === WorkerStatus.active}
+                        disabled={isPending}
+                        onCheckedChange={(checked) =>
+                          handleToggle(worker.id, checked)
+                        }
+                      />
+                      <Label
+                        htmlFor={`worker-toggle-${worker.id.toString()}`}
+                        className={`text-sm font-medium cursor-pointer ${
+                          worker.status === WorkerStatus.active
+                            ? "text-green-600"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {worker.status === WorkerStatus.active
+                          ? "Active"
+                          : "Inactive"}
+                      </Label>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      data-ocid={`admin_workers.delete_button.${idx + 1}`}
+                      disabled={isPending}
+                      onClick={() => handleBlock(worker.id)}
+                      className="text-xs h-7 rounded-lg border-red-300 text-red-700 hover:bg-red-50"
+                    >
+                      Block
+                    </Button>
+                  </div>
+                )}
               </motion.div>
             ))}
           </div>

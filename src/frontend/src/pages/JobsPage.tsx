@@ -196,8 +196,9 @@ function ApplyModal({
       setName("");
       setPhone("");
       onClose();
-    } catch {
-      toast.error("Failed to submit application");
+    } catch (err) {
+      console.error("Failed to submit application:", err);
+      toast.error("Failed to submit application. Please try again.");
     }
   };
 
@@ -385,8 +386,9 @@ function PostJobTab() {
       setLocation("");
       setSalary("");
       setDescription("");
-    } catch {
-      toast.error("Failed to post job vacancy");
+    } catch (err) {
+      console.error("Failed to post job vacancy:", err);
+      toast.error("Failed to post job vacancy. Please try again.");
     }
   };
 

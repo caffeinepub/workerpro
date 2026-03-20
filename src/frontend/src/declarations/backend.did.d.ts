@@ -10,6 +10,21 @@ import type { ActorMethod } from '@icp-sdk/core/agent';
 import type { IDL } from '@icp-sdk/core/candid';
 import type { Principal } from '@icp-sdk/core/principal';
 
+export interface Booking {
+  'id' : BookingId,
+  'status' : BookingStatus,
+  'serviceType' : string,
+  'workerId' : bigint,
+  'userId' : bigint,
+  'note' : string,
+  'createdAt' : Time,
+  'workerName' : string,
+}
+export type BookingId = bigint;
+export type BookingStatus = { 'cancelled' : null } |
+  { 'pending' : null } |
+  { 'rejected' : null } |
+  { 'accepted' : null };
 export type DayOfWeek = { 'tuesday' : null } |
   { 'wednesday' : null } |
   { 'saturday' : null } |
@@ -122,6 +137,11 @@ export interface UserAccount {
   'passwordHash' : string,
 }
 export type UserId = bigint;
+export interface UserProfile {
+  'userId' : [] | [bigint],
+  'name' : string,
+  'phone' : string,
+}
 export type UserRole = { 'admin' : null } |
   { 'user' : null } |
   { 'worker' : null };
@@ -141,13 +161,16 @@ export interface WorkEntry {
   'workerName' : string,
 }
 export type WorkEntryId = bigint;
+export type WorkerId = bigint;
 export interface WorkerProfile {
-  'id' : bigint,
+  'id' : WorkerId,
   'status' : WorkerStatus,
+  'latitude' : number,
   'userId' : bigint,
   'name' : string,
   'createdAt' : Time,
   'profession' : string,
+  'longitude' : number,
   'rating' : number,
   'phone' : string,
   'location' : string,
@@ -157,6 +180,7 @@ export type WorkerStatus = { 'active' : null } |
   { 'inactive' : null };
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
+  'acceptBooking' : ActorMethod<[BookingId], boolean>,
   'applyToVacancy' : ActorMethod<
     [JobVacancyId, string, string],
     JobApplicationId
@@ -166,8 +190,13 @@ export interface _SERVICE {
     [JobPostingId, string, string, string],
     boolean
   >,
+  'cancelBooking' : ActorMethod<[BookingId], boolean>,
   'closeJobVacancy' : ActorMethod<[JobVacancyId], undefined>,
   'completeJobPosting' : ActorMethod<[JobPostingId], boolean>,
+  'createBooking' : ActorMethod<
+    [bigint, bigint, string, string, string],
+    BookingId
+  >,
   'createJobPosting' : ActorMethod<
     [string, string, string, bigint, bigint, number, string],
     JobPostingId
@@ -195,7 +224,7 @@ export interface _SERVICE {
     WorkEntryId
   >,
   'createWorkerProfile' : ActorMethod<
-    [bigint, string, string, string, number, string],
+    [bigint, string, string, string, number, string, number, number],
     bigint
   >,
   'deleteJobVacancy' : ActorMethod<[JobVacancyId], undefined>,
@@ -205,7 +234,9 @@ export interface _SERVICE {
   'deleteScheduleEntry' : ActorMethod<[ScheduleId], undefined>,
   'deleteTask' : ActorMethod<[TaskId], undefined>,
   'deleteWorkEntry' : ActorMethod<[WorkEntryId], undefined>,
+  'generateOtp' : ActorMethod<[string], string>,
   'getActiveWorkers' : ActorMethod<[], Array<WorkerProfile>>,
+  'getAllJobPostings' : ActorMethod<[], Array<JobPosting>>,
   'getAllJobVacancies' : ActorMethod<[], Array<JobVacancy>>,
   'getAllNotes' : ActorMethod<[], Array<Note>>,
   'getAllNotifications' : ActorMethod<[], Array<Notification>>,
@@ -219,8 +250,12 @@ export interface _SERVICE {
     [JobVacancyId],
     Array<JobApplication>
   >,
+  'getAssignedJobPostings' : ActorMethod<[], Array<JobPosting>>,
   'getAvailableJobPostings' : ActorMethod<[], Array<JobPosting>>,
   'getAvailableRentals' : ActorMethod<[], Array<RentalProperty>>,
+  'getBookingsForUser' : ActorMethod<[bigint], Array<Booking>>,
+  'getBookingsForWorker' : ActorMethod<[bigint], Array<Booking>>,
+  'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole__1>,
   'getJobVacanciesByCategory' : ActorMethod<[string], Array<JobVacancy>>,
   'getJobVacanciesByLocation' : ActorMethod<[string], Array<JobVacancy>>,
@@ -232,6 +267,7 @@ export interface _SERVICE {
   'getTask' : ActorMethod<[TaskId], Task>,
   'getUnreadCount' : ActorMethod<[], bigint>,
   'getUserById' : ActorMethod<[UserId], [] | [UserAccount]>,
+  'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'getWorkEntriesByDate' : ActorMethod<[string], Array<WorkEntry>>,
   'getWorkEntriesByDateRange' : ActorMethod<[string, string], Array<WorkEntry>>,
   'getWorkEntriesByWorker' : ActorMethod<[string], Array<WorkEntry>>,
@@ -250,6 +286,8 @@ export interface _SERVICE {
     { 'ok' : UserId } |
       { 'err' : string }
   >,
+  'rejectBooking' : ActorMethod<[BookingId], boolean>,
+  'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'setJobPreference' : ActorMethod<[string, JobPostingId, boolean], undefined>,
   'setWorkerStatus' : ActorMethod<[bigint, WorkerStatus], boolean>,
   'updateNote' : ActorMethod<[NoteId, string, string], undefined>,
@@ -279,7 +317,9 @@ export interface _SERVICE {
     ],
     undefined
   >,
-  'updateWorkerStatus' : ActorMethod<[bigint, boolean], boolean>,
+  'updateWorkerLocation' : ActorMethod<[WorkerId, number, number], boolean>,
+  'updateWorkerStatus' : ActorMethod<[WorkerId, boolean], boolean>,
+  'verifyOtp' : ActorMethod<[string, string], boolean>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];
