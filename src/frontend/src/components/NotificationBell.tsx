@@ -10,12 +10,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Bell, CheckCheck, Trash2 } from "lucide-react";
 import {
-  useDeleteNotification,
-  useGetAllNotifications,
-  useGetUnreadCount,
-  useMarkAllNotificationsRead,
-  useMarkNotificationRead,
-} from "../hooks/useNotificationQueries";
+  useDeleteUserNotification,
+  useGetNotificationsForUser,
+  useGetUnreadCountForUser,
+  useMarkAllUserNotificationsRead,
+  useMarkUserNotificationRead,
+} from "../hooks/useUserNotificationQueries";
+import type { UserSession } from "../hooks/useWorkerQueries";
 
 function formatTime(timestamp: bigint): string {
   const ms = Number(timestamp / 1_000_000n);
@@ -30,29 +31,16 @@ function formatTime(timestamp: bigint): string {
   return d.toLocaleDateString();
 }
 
-function typeIcon(type: string): string {
-  switch (type) {
-    case "new_job":
-      return "💼";
-    case "job_assigned":
-      return "✅";
-    case "job_accepted":
-      return "🤝";
-    case "job_completed":
-      return "🎉";
-    default:
-      return "🔔";
-  }
-}
-
 export default function NotificationBell({
   onOpenCenter,
-}: { onOpenCenter: () => void }) {
-  const { data: notifications = [] } = useGetAllNotifications();
-  const { data: unreadCount = 0n } = useGetUnreadCount();
-  const markRead = useMarkNotificationRead();
-  const markAllRead = useMarkAllNotificationsRead();
-  const deleteNotif = useDeleteNotification();
+  session,
+}: { onOpenCenter: () => void; session?: UserSession | null }) {
+  const userId = session?.userId;
+  const { data: notifications = [] } = useGetNotificationsForUser(userId);
+  const { data: unreadCount = 0n } = useGetUnreadCountForUser(userId);
+  const markRead = useMarkUserNotificationRead(userId);
+  const markAllRead = useMarkAllUserNotificationsRead();
+  const deleteNotif = useDeleteUserNotification(userId);
 
   const recent = notifications.slice(0, 5);
   const count = Number(unreadCount);
@@ -90,7 +78,7 @@ export default function NotificationBell({
               variant="ghost"
               size="sm"
               className="h-6 text-xs gap-1"
-              onClick={() => markAllRead.mutate()}
+              onClick={() => userId && markAllRead.mutate(userId)}
               data-ocid="notification.mark_all_read.button"
             >
               <CheckCheck className="w-3 h-3" />
@@ -119,9 +107,7 @@ export default function NotificationBell({
               }}
             >
               <div className="flex items-center gap-2 w-full">
-                <span className="text-base">
-                  {typeIcon(n.notificationType)}
-                </span>
+                <span className="text-base">🔔</span>
                 <span
                   className={`flex-1 text-sm font-medium leading-tight ${!n.isRead ? "text-foreground" : "text-muted-foreground"}`}
                 >

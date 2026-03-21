@@ -1,16 +1,20 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bell, CheckCheck, Trash2 } from "lucide-react";
+import { Bell, CheckCheck, Phone, Trash2, User } from "lucide-react";
 import { motion } from "motion/react";
 import {
-  type Notification,
-  useDeleteNotification,
-  useGetAllNotifications,
-  useMarkAllNotificationsRead,
-  useMarkNotificationRead,
-} from "../hooks/useNotificationQueries";
+  type JobApplicationNotif,
+  type UserNotification,
+  useDeleteJobAppNotif,
+  useDeleteUserNotification,
+  useGetJobAppNotifsForUser,
+  useGetNotificationsForUser,
+  useMarkAllUserNotificationsRead,
+  useMarkJobAppNotifRead,
+  useMarkUserNotificationRead,
+} from "../hooks/useUserNotificationQueries";
+import type { UserSession } from "../hooks/useWorkerQueries";
 
 function formatDateTime(timestamp: bigint): string {
   const ms = Number(timestamp / 1_000_000n);
@@ -18,76 +22,137 @@ function formatDateTime(timestamp: bigint): string {
   return d.toLocaleString();
 }
 
-function typeIcon(type: string): string {
-  switch (type) {
-    case "new_job":
-      return "💼";
-    case "job_assigned":
-      return "✅";
-    case "job_accepted":
-      return "🤝";
-    case "job_completed":
-      return "🎉";
-    default:
-      return "🔔";
-  }
-}
-
-function typeLabel(type: string): string {
-  switch (type) {
-    case "new_job":
-      return "New Job";
-    case "job_assigned":
-      return "Assignment";
-    case "job_accepted":
-      return "Booking";
-    case "job_completed":
-      return "Completed";
-    default:
-      return "Notification";
-  }
-}
-
-function typeBadgeVariant(type: string): "default" | "secondary" | "outline" {
-  switch (type) {
-    case "new_job":
-      return "default";
-    case "job_assigned":
-      return "secondary";
-    case "job_accepted":
-      return "secondary";
-    case "job_completed":
-      return "outline";
-    default:
-      return "outline";
-  }
-}
-
-function NotificationCard({
+// Card for job application notifications (with full applicant details)
+function JobAppNotifCard({
   notification,
   index,
+  userId,
 }: {
-  notification: Notification;
+  notification: JobApplicationNotif;
   index: number;
+  userId?: bigint;
 }) {
-  const markRead = useMarkNotificationRead();
-  const deleteNotif = useDeleteNotification();
+  const markRead = useMarkJobAppNotifRead(userId);
+  const deleteNotif = useDeleteJobAppNotif(userId);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
-      data-ocid={`notifications.item.${index + 1}`}
+      data-ocid={`notifications.job_app.item.${index + 1}`}
       className={`rounded-xl border p-4 flex gap-3 transition-colors ${
         !notification.isRead
           ? "bg-primary/5 border-primary/20"
           : "bg-card border-border"
       }`}
     >
-      <div className="text-2xl flex-shrink-0 mt-0.5">
-        {typeIcon(notification.notificationType)}
+      <div className="text-2xl flex-shrink-0 mt-0.5">📋</div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className={`font-semibold text-sm ${
+                !notification.isRead
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+              }`}
+            >
+              New Job Application
+            </span>
+            {!notification.isRead && (
+              <span className="w-2 h-2 rounded-full bg-primary inline-block" />
+            )}
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {!notification.isRead && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => markRead.mutate(notification.id)}
+                data-ocid={`notifications.job_app.mark_read.${index + 1}`}
+                title="Mark as read"
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+              onClick={() => deleteNotif.mutate(notification.id)}
+              data-ocid={`notifications.job_app.delete.${index + 1}`}
+              title="Delete"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Job title */}
+        <p className="text-sm font-medium text-foreground mt-1">
+          {String(notification.jobTitle)}
+        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {String(notification.message)}
+        </p>
+
+        {/* Applicant details */}
+        <div className="mt-2 rounded-lg bg-muted/50 p-2.5 space-y-1.5">
+          <div className="flex items-center gap-1.5 text-xs">
+            <User className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+            <span className="text-muted-foreground">Applicant:</span>
+            <span className="font-medium text-foreground">
+              {String(notification.applicantName)}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs">
+            <Phone className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+            <span className="text-muted-foreground">Phone:</span>
+            <a
+              href={`tel:${String(notification.applicantPhone)}`}
+              className="font-medium text-primary underline"
+            >
+              {String(notification.applicantPhone)}
+            </a>
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground/60 mt-1.5">
+          {formatDateTime(notification.timestamp)}
+        </p>
       </div>
+    </motion.div>
+  );
+}
+
+// Card for generic system notifications
+function SystemNotifCard({
+  notification,
+  index,
+  userId,
+}: {
+  notification: UserNotification;
+  index: number;
+  userId?: bigint;
+}) {
+  const markRead = useMarkUserNotificationRead(userId);
+  const deleteNotif = useDeleteUserNotification(userId);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.04 }}
+      data-ocid={`notifications.system.item.${index + 1}`}
+      className={`rounded-xl border p-4 flex gap-3 transition-colors ${
+        !notification.isRead
+          ? "bg-primary/5 border-primary/20"
+          : "bg-card border-border"
+      }`}
+    >
+      <div className="text-2xl flex-shrink-0 mt-0.5">🔔</div>
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 flex-wrap">
@@ -100,12 +165,6 @@ function NotificationCard({
             >
               {notification.title}
             </span>
-            <Badge
-              variant={typeBadgeVariant(notification.notificationType)}
-              className="text-xs"
-            >
-              {typeLabel(notification.notificationType)}
-            </Badge>
             {!notification.isRead && (
               <span className="w-2 h-2 rounded-full bg-primary inline-block" />
             )}
@@ -117,7 +176,6 @@ function NotificationCard({
                 size="icon"
                 className="h-7 w-7"
                 onClick={() => markRead.mutate(notification.id)}
-                data-ocid={`notifications.mark_read.button.${index + 1}`}
                 title="Mark as read"
               >
                 <CheckCheck className="w-3.5 h-3.5" />
@@ -128,7 +186,6 @@ function NotificationCard({
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-destructive"
               onClick={() => deleteNotif.mutate(notification.id)}
-              data-ocid={`notifications.delete_button.${index + 1}`}
               title="Delete"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -146,20 +203,28 @@ function NotificationCard({
   );
 }
 
-export default function NotificationsPage() {
-  const { data: notifications = [], isLoading } = useGetAllNotifications();
-  const markAllRead = useMarkAllNotificationsRead();
+export default function NotificationsPage({
+  session,
+}: { session?: UserSession | null }) {
+  const userId = session?.userId;
+  const { data: sysNotifs = [], isLoading: sysLoading } =
+    useGetNotificationsForUser(userId);
+  const { data: jobAppNotifs = [], isLoading: jobLoading } =
+    useGetJobAppNotifsForUser(userId);
+  const markAllRead = useMarkAllUserNotificationsRead();
 
-  const unread = notifications.filter((n) => !n.isRead);
-  const jobs = notifications.filter((n) => n.notificationType === "new_job");
-  const assignments = notifications.filter(
-    (n) =>
-      n.notificationType === "job_assigned" ||
-      n.notificationType === "job_accepted",
+  const isLoading = sysLoading || jobLoading;
+
+  const unreadSys = sysNotifs.filter((n) => !n.isRead).length;
+  const unreadJobApp = jobAppNotifs.filter((n) => !n.isRead).length;
+  const totalUnread = unreadSys + unreadJobApp;
+  const total = sysNotifs.length + jobAppNotifs.length;
+
+  // Sort all job app notifs by timestamp desc
+  const sortedJobApp = [...jobAppNotifs].sort((a, b) =>
+    Number(b.timestamp - a.timestamp),
   );
-  const completed = notifications.filter(
-    (n) => n.notificationType === "job_completed",
-  );
+  const unreadJobAppList = sortedJobApp.filter((n) => !n.isRead);
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -171,16 +236,16 @@ export default function NotificationsPage() {
           <div>
             <h1 className="text-xl font-bold text-foreground">Notifications</h1>
             <p className="text-sm text-muted-foreground">
-              {unread.length > 0 ? `${unread.length} unread` : "All caught up"}
+              {totalUnread > 0 ? `${totalUnread} unread` : "All caught up"}
             </p>
           </div>
         </div>
-        {unread.length > 0 && (
+        {totalUnread > 0 && (
           <Button
             variant="outline"
             size="sm"
             className="gap-2"
-            onClick={() => markAllRead.mutate()}
+            onClick={() => userId && markAllRead.mutate(userId)}
             data-ocid="notifications.mark_all_read.button"
           >
             <CheckCheck className="w-4 h-4" />
@@ -189,35 +254,33 @@ export default function NotificationsPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {[
           {
             label: "Total",
-            count: notifications.length,
-            color: "bg-blue-500/10 text-blue-600",
+            count: total,
+            color: "text-blue-600",
           },
           {
             label: "Unread",
-            count: unread.length,
-            color: "bg-red-500/10 text-red-600",
+            count: totalUnread,
+            color: "text-red-600",
           },
           {
-            label: "Jobs",
-            count: jobs.length,
-            color: "bg-green-500/10 text-green-600",
+            label: "Job Applications",
+            count: jobAppNotifs.length,
+            color: "text-green-600",
           },
           {
-            label: "Assignments",
-            count: assignments.length,
-            color: "bg-purple-500/10 text-purple-600",
+            label: "Read",
+            count: total - totalUnread,
+            color: "text-muted-foreground",
           },
         ].map((stat) => (
           <Card key={stat.label} className="border shadow-sm">
             <CardContent className="p-3">
               <p className="text-xs text-muted-foreground">{stat.label}</p>
-              <p
-                className={`text-2xl font-bold mt-0.5 ${stat.color.split(" ")[1]}`}
-              >
+              <p className={`text-2xl font-bold mt-0.5 ${stat.color}`}>
                 {stat.count}
               </p>
             </CardContent>
@@ -225,65 +288,122 @@ export default function NotificationsPage() {
         ))}
       </div>
 
-      <Tabs defaultValue="all" data-ocid="notifications.tab">
-        <TabsList className="grid grid-cols-4 w-full">
+      <Tabs defaultValue="applications" data-ocid="notifications.tab">
+        <TabsList className="grid grid-cols-3 w-full">
+          <TabsTrigger
+            value="applications"
+            data-ocid="notifications.applications.tab"
+          >
+            Applications {jobAppNotifs.length > 0 && `(${jobAppNotifs.length})`}
+          </TabsTrigger>
+          <TabsTrigger value="unread" data-ocid="notifications.unread.tab">
+            Unread {totalUnread > 0 && `(${totalUnread})`}
+          </TabsTrigger>
           <TabsTrigger value="all" data-ocid="notifications.all.tab">
-            All {notifications.length > 0 && `(${notifications.length})`}
-          </TabsTrigger>
-          <TabsTrigger value="jobs" data-ocid="notifications.jobs.tab">
-            Jobs {jobs.length > 0 && `(${jobs.length})`}
-          </TabsTrigger>
-          <TabsTrigger
-            value="assignments"
-            data-ocid="notifications.assignments.tab"
-          >
-            Assignments {assignments.length > 0 && `(${assignments.length})`}
-          </TabsTrigger>
-          <TabsTrigger
-            value="completed"
-            data-ocid="notifications.completed.tab"
-          >
-            Completed {completed.length > 0 && `(${completed.length})`}
+            All {total > 0 && `(${total})`}
           </TabsTrigger>
         </TabsList>
 
-        {(
-          [
-            ["all", notifications],
-            ["jobs", jobs],
-            ["assignments", assignments],
-            ["completed", completed],
-          ] as [string, Notification[]][]
-        ).map(([tab, list]) => (
-          <TabsContent key={tab} value={tab} className="mt-4 space-y-3">
-            {isLoading ? (
-              <div
-                className="py-12 text-center text-muted-foreground"
-                data-ocid={`notifications.${tab}.loading_state`}
-              >
-                Loading...
-              </div>
-            ) : list.length === 0 ? (
-              <div
-                className="py-12 text-center"
-                data-ocid={`notifications.${tab}.empty_state`}
-              >
-                <Bell className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-                <p className="text-muted-foreground text-sm">
-                  No notifications here
-                </p>
-              </div>
-            ) : (
-              list.map((n, i) => (
-                <NotificationCard
+        {/* Job Applications Tab */}
+        <TabsContent value="applications" className="mt-4 space-y-3">
+          {isLoading ? (
+            <div className="py-12 text-center text-muted-foreground">
+              Loading...
+            </div>
+          ) : sortedJobApp.length === 0 ? (
+            <div className="py-12 text-center">
+              <Bell className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-muted-foreground text-sm">
+                {userId
+                  ? "No job application notifications yet"
+                  : "Log in to see your notifications"}
+              </p>
+            </div>
+          ) : (
+            sortedJobApp.map((n, i) => (
+              <JobAppNotifCard
+                key={String(n.id)}
+                notification={n}
+                index={i}
+                userId={userId}
+              />
+            ))
+          )}
+        </TabsContent>
+
+        {/* Unread Tab */}
+        <TabsContent value="unread" className="mt-4 space-y-3">
+          {isLoading ? (
+            <div className="py-12 text-center text-muted-foreground">
+              Loading...
+            </div>
+          ) : unreadJobAppList.length === 0 && unreadSys === 0 ? (
+            <div className="py-12 text-center">
+              <Bell className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-muted-foreground text-sm">
+                No unread notifications
+              </p>
+            </div>
+          ) : (
+            <>
+              {unreadJobAppList.map((n, i) => (
+                <JobAppNotifCard
                   key={String(n.id)}
                   notification={n}
                   index={i}
+                  userId={userId}
                 />
-              ))
-            )}
-          </TabsContent>
-        ))}
+              ))}
+              {sysNotifs
+                .filter((n) => !n.isRead)
+                .map((n, i) => (
+                  <SystemNotifCard
+                    key={String(n.id)}
+                    notification={n}
+                    index={i}
+                    userId={userId}
+                  />
+                ))}
+            </>
+          )}
+        </TabsContent>
+
+        {/* All Tab */}
+        <TabsContent value="all" className="mt-4 space-y-3">
+          {isLoading ? (
+            <div className="py-12 text-center text-muted-foreground">
+              Loading...
+            </div>
+          ) : total === 0 ? (
+            <div className="py-12 text-center">
+              <Bell className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-muted-foreground text-sm">
+                {userId
+                  ? "No notifications here"
+                  : "Log in to see your notifications"}
+              </p>
+            </div>
+          ) : (
+            <>
+              {sortedJobApp.map((n, i) => (
+                <JobAppNotifCard
+                  key={String(n.id)}
+                  notification={n}
+                  index={i}
+                  userId={userId}
+                />
+              ))}
+              {sysNotifs.map((n, i) => (
+                <SystemNotifCard
+                  key={String(n.id)}
+                  notification={n}
+                  index={sortedJobApp.length + i}
+                  userId={userId}
+                />
+              ))}
+            </>
+          )}
+        </TabsContent>
       </Tabs>
     </div>
   );

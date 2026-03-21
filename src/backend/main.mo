@@ -12,8 +12,8 @@ import Principal "mo:core/Principal";
 import OtpRecord "OtpRecord";
 import MixinAuthorization "authorization/MixinAuthorization";
 import AccessControl "authorization/access-control";
-
-
+import Outcall "http-outcalls/outcall";
+import Nat8 "mo:core/Nat8";
 
 actor {
   // Authentication System
@@ -113,6 +113,99 @@ actor {
     };
     #err("Invalid credentials");
   };
+
+  // Public OTP login - send OTP to phone, then call loginWithOtp to verify and get session
+  public shared ({ caller }) func sendLoginOtp(phone : Text) : async {
+    #ok : Text;
+    #err : Text;
+  } {
+    // Check user exists first
+    var found = false;
+    for ((id, user) in users.entries()) {
+      if (Text.equal(user.emailOrPhone, phone)) {
+        found := true;
+      };
+    };
+    if (not found) {
+      return #err("No account found with this phone number");
+    };
+    // Rate limiting: max 1 OTP per 60 seconds per phone
+    let now = Time.now();
+    let sixtySecsNanos = 60 * 1_000_000_000;
+    switch (otpRateLimit.get(phone)) {
+      case (?lastTime) {
+        if (now - lastTime < sixtySecsNanos) {
+          return #err("Please wait before requesting another OTP");
+        };
+      };
+      case (null) {};
+    };
+    otpRateLimit.add(phone, now);
+    // Generate OTP
+    let seed : Time.Time = Time.now();
+    let codeInt = ((seed % 900_000_000_000_000) / 1_234_567) % 1_000_000;
+    let code = codeInt.toText();
+    let paddedCode = if (code.size() < 6) { "0" # code } else { code };
+    let otpRecord : OtpRecord = {
+      phone;
+      otp = paddedCode;
+      createdAt = seed;
+      used = false;
+    };
+    otpRecords.add(phone, otpRecord);
+    // Send via Twilio if configured
+    if (twilioAccountSid != "" and twilioBase64Auth != "" and twilioFromPhone != "") {
+      try {
+        let url = "https://api.twilio.com/2010-04-01/Accounts/" # twilioAccountSid # "/Messages.json";
+        let msgBody = "Your WorkerPro login OTP is: " # paddedCode # ". Valid for 60 seconds. Do not share this code.";
+        let body = "From=" # urlEncode(twilioFromPhone) # "&To=" # urlEncode(phone) # "&Body=" # urlEncode(msgBody);
+        let headers : [Outcall.Header] = [
+          { name = "Content-Type"; value = "application/x-www-form-urlencoded" },
+          { name = "Authorization"; value = "Basic " # twilioBase64Auth },
+        ];
+        let response = await Outcall.httpPostRequest(url, headers, body, transformOtpResponse);
+        if (response.contains(#text "\"sid\":")) {
+          #ok("OTP sent via SMS")
+        } else {
+          #ok("OTP generated (SMS delivery issue — contact admin)")
+        }
+      } catch (_) {
+        #ok("OTP generated (SMS unavailable — contact admin)")
+      }
+    } else {
+      #ok("OTP generated (SMS not configured — contact admin)")
+    }
+  };
+
+  // Public OTP login verify — verifies OTP and returns session
+  public shared ({ caller }) func loginWithOtp(phone : Text, otp : Text) : async {
+    #ok : { userId : UserId; role : UserRole };
+    #err : Text;
+  } {
+    // Verify OTP
+    switch (otpRecords.get(phone)) {
+      case (null) { return #err("Invalid or expired OTP") };
+      case (?record) {
+        if (record.used) { return #err("OTP already used. Request a new one.") };
+        if (record.otp != otp) { return #err("Invalid OTP. Please check and try again.") };
+        let now = Time.now();
+        let age = now - record.createdAt;
+        let sixtySecsNanos = 60 * 1_000_000_000;
+        if (age > sixtySecsNanos) { return #err("OTP expired. Please request a new one.") };
+        // Mark as used
+        let updated : OtpRecord = { phone = record.phone; otp = record.otp; createdAt = record.createdAt; used = true };
+        otpRecords.add(phone, updated);
+      };
+    };
+    // Find user by phone
+    for ((id, user) in users.entries()) {
+      if (Text.equal(user.emailOrPhone, phone)) {
+        return #ok({ userId = user.id; role = user.role });
+      };
+    };
+    #err("No account found with this phone number")
+  };
+
 
   public query ({ caller }) func getUserById(id : UserId) : async ?UserAccount {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
@@ -813,7 +906,163 @@ actor {
   /////////////////////////////////////
   // ** NEW MODULES BELOW **
 
+  ///////////////////////////////
+  /// USER-NOTIFICATION SYSTEM ///
+  ///////////////////////////////
+
+  public type UserNotificationId = Nat;
+
+  type UserNotification = {
+    id : UserNotificationId;
+    receiverUserId : Nat;
+    senderUserId : Nat;
+    jobId : Nat;
+    title : Text;
+    message : Text;
+    timestamp : Int;
+    isRead : Bool;
+  };
+
+  stable var userNotificationCounter = 0;
+  stable var userNotifications : [(UserNotificationId, UserNotification)] = [];
+
+  // Function to create a user notification
+  public shared ({ caller }) func createUserNotification(receiverUserId : Nat, senderUserId : Nat, jobId : Nat, title : Text, message : Text) : async UserNotificationId {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can create notifications");
+    };
+    let newId = userNotificationCounter;
+    let notification : UserNotification = {
+      id = newId;
+      receiverUserId;
+      senderUserId;
+      jobId;
+      title;
+      message;
+      timestamp = Time.now();
+      isRead = false;
+    };
+    userNotifications := userNotifications.concat([(newId, notification)]);
+    userNotificationCounter += 1;
+    newId;
+  };
+
+  // Public function to get notifications for a user, sorted by timestamp descending
+  public query ({ caller }) func getNotificationsForUser(userId : Nat) : async [UserNotification] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view notifications");
+    };
+    let filtered = userNotifications.filter(func((_, notif)) { notif.receiverUserId == userId });
+    let result = filtered.map(func((_, notif)) { notif });
+    // Sort by timestamp descending
+    result.sort(
+      func(a, b) {
+        Int.compare(b.timestamp, a.timestamp);
+      }
+    );
+  };
+
+  public query ({ caller }) func getUnreadCountForUser(userId : Nat) : async Nat {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view unread count");
+    };
+    let filtered = userNotifications.filter(func((_, notif)) { notif.receiverUserId == userId and not notif.isRead });
+    filtered.size();
+  };
+
+  public shared ({ caller }) func markUserNotificationRead(id : UserNotificationId) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can mark notifications as read");
+    };
+    // Verify ownership: the notification must belong to a user (we check receiverUserId exists)
+    let notifOpt = userNotifications.filter(func((notifId, _)) { notifId == id });
+    if (notifOpt.size() == 0) {
+      Runtime.trap("Notification not found");
+    };
+    let mapped = userNotifications.map(func((notifId, notif)) { if (notifId == id) { (notifId, { notif with isRead = true }) } else { (notifId, notif) } });
+    userNotifications := mapped;
+  };
+
+  public shared ({ caller }) func markAllUserNotificationsRead(userId : Nat) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can mark notifications as read");
+    };
+    let mapped = userNotifications.map(func((notifId, notif)) { if (notif.receiverUserId == userId) { (notifId, { notif with isRead = true }) } else { (notifId, notif) } });
+    userNotifications := mapped;
+  };
+
+  public shared ({ caller }) func deleteUserNotification(id : UserNotificationId) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can delete notifications");
+    };
+    // Verify the notification exists
+    let notifOpt = userNotifications.filter(func((notifId, _)) { notifId == id });
+    if (notifOpt.size() == 0) {
+      Runtime.trap("Notification not found");
+    };
+    let filtered = userNotifications.filter(
+      func((notifId, _)) { notifId != id }
+    );
+    userNotifications := filtered;
+  };
+
+  // JOB APPLICATION NOTIFICATIONS (V2 - with applicant details)
+  //
+  // Separate stable var to avoid breaking existing userNotifications upgrade path.
+
+  public type JobApplicationNotifId = Nat;
+
+  public type JobApplicationNotif = {
+    id : JobApplicationNotifId;
+    receiverUserId : Nat;
+    senderUserId : Nat;
+    jobId : Nat;
+    jobTitle : Text;
+    applicantName : Text;
+    applicantPhone : Text;
+    message : Text;
+    timestamp : Int;
+    isRead : Bool;
+  };
+
+  stable var jobAppNotifCounter = 0;
+  stable var jobAppNotifs : [(JobApplicationNotifId, JobApplicationNotif)] = [];
+
+  public query ({ caller }) func getJobAppNotifsForUser(userId : Nat) : async [JobApplicationNotif] {
+    let filtered = jobAppNotifs.filter(func((_, n)) { n.receiverUserId == userId });
+    let result = filtered.map(func((_, n)) { n });
+    result.sort(func(a, b) { Int.compare(b.timestamp, a.timestamp) });
+  };
+
+  public query ({ caller }) func getJobAppUnreadCount(userId : Nat) : async Nat {
+    jobAppNotifs.filter(func((_, n)) { n.receiverUserId == userId and not n.isRead }).size();
+  };
+
+  public shared ({ caller }) func markJobAppNotifRead(id : JobApplicationNotifId) : async () {
+    let mapped = jobAppNotifs.map(func((nid, n)) {
+      if (nid == id) { (nid, { n with isRead = true }) } else { (nid, n) }
+    });
+    jobAppNotifs := mapped;
+  };
+
+  public shared ({ caller }) func markAllJobAppNotifsRead(userId : Nat) : async () {
+    let mapped = jobAppNotifs.map(func((nid, n)) {
+      if (n.receiverUserId == userId) { (nid, { n with isRead = true }) } else { (nid, n) }
+    });
+    jobAppNotifs := mapped;
+  };
+
+  public shared ({ caller }) func deleteJobAppNotif(id : JobApplicationNotifId) : async () {
+    jobAppNotifs := jobAppNotifs.filter(func((nid, _)) { nid != id });
+  };
+
+
   // JOB VACANCIES
+  //
+  // NOTE: JobVacancy is the stored (stable) type -- it does NOT contain
+  // postedByUserId to preserve stable-variable compatibility.
+  // Ownership is stored separately in jobVacancyOwners.
+  // All public API functions return JobVacancyWithOwner which joins the two.
 
   type JobVacancyId = Nat;
   type JobVacancyStatus = {
@@ -821,6 +1070,7 @@ actor {
     #closed;
   };
 
+  // Stored type -- DO NOT add fields; use separate Maps for new data (upgrade compatibility)
   type JobVacancy = {
     id : JobVacancyId;
     title : Text;
@@ -833,10 +1083,51 @@ actor {
     postedAt : Time.Time;
   };
 
+  // API return type -- includes postedByUserId joined from jobVacancyOwners
+  type JobVacancyWithOwner = {
+    id : JobVacancyId;
+    title : Text;
+    companyName : Text;
+    category : Text;
+    salary : ?Text;
+    location : Text;
+    description : Text;
+    status : JobVacancyStatus;
+    postedAt : Time.Time;
+    postedByUserId : Nat;
+    contactPhone : ?Text;
+  };
+
   let jobVacancies = Map.empty<JobVacancyId, JobVacancy>();
+  // Separate stable map for ownership -- adding a NEW map is always compatible
+  let jobVacancyOwners = Map.empty<JobVacancyId, Nat>();
+  // Separate stable map for contact phone (adding new map is always upgrade-compatible)
+  let jobVacancyContactPhones = Map.empty<JobVacancyId, Text>();
   var nextVacancyId = 0;
 
-  public shared ({ caller }) func createJobVacancy(title : Text, companyName : Text, category : Text, salary : ?Text, location : Text, description : Text) : async JobVacancyId {
+  // Helper: join a stored vacancy with its owner
+  func withOwner(vacancy : JobVacancy) : JobVacancyWithOwner {
+    let ownerId = switch (jobVacancyOwners.get(vacancy.id)) {
+      case (?id) { id };
+      case (null) { 0 }; // legacy entries have no owner
+    };
+    let contactPhone = jobVacancyContactPhones.get(vacancy.id);
+    {
+      id = vacancy.id;
+      title = vacancy.title;
+      companyName = vacancy.companyName;
+      category = vacancy.category;
+      salary = vacancy.salary;
+      location = vacancy.location;
+      description = vacancy.description;
+      status = vacancy.status;
+      postedAt = vacancy.postedAt;
+      postedByUserId = ownerId;
+      contactPhone;
+    };
+  };
+
+  public shared ({ caller }) func createJobVacancy(title : Text, companyName : Text, category : Text, salary : ?Text, location : Text, description : Text, postedByUserId : Nat, contactPhone : ?Text) : async JobVacancyId {
     let id = nextVacancyId;
     let vacancy : JobVacancy = {
       id;
@@ -850,42 +1141,38 @@ actor {
       postedAt = Time.now();
     };
     jobVacancies.add(id, vacancy);
+    jobVacancyOwners.add(id, postedByUserId);
+    switch (contactPhone) {
+      case (?phone) { jobVacancyContactPhones.add(id, phone) };
+      case (null) {};
+    };
     nextVacancyId += 1;
     id;
   };
 
-  public query ({ caller }) func getOpenJobVacancies() : async [JobVacancy] {
-    // Public access - anyone can view open vacancies
+  public query ({ caller }) func getOpenJobVacancies() : async [JobVacancyWithOwner] {
     jobVacancies.values().toArray().filter(
-      func(vacancy) {
-        vacancy.status == #open;
-      }
-    );
+      func(vacancy) { vacancy.status == #open }
+    ).map(withOwner);
   };
 
-  public query ({ caller }) func getAllJobVacancies() : async [JobVacancy] {
+  public query ({ caller }) func getAllJobVacancies() : async [JobVacancyWithOwner] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can view all job vacancies");
     };
-    jobVacancies.values().toArray();
+    jobVacancies.values().toArray().map(withOwner);
   };
 
-  public query ({ caller }) func getJobVacanciesByCategory(category : Text) : async [JobVacancy] {
-    // Public access - anyone can search by category
+  public query ({ caller }) func getJobVacanciesByCategory(category : Text) : async [JobVacancyWithOwner] {
     jobVacancies.values().toArray().filter(
-      func(vacancy) {
-        vacancy.category == category;
-      }
-    );
+      func(vacancy) { vacancy.category == category }
+    ).map(withOwner);
   };
 
-  public query ({ caller }) func getJobVacanciesByLocation(location : Text) : async [JobVacancy] {
-    // Public access - anyone can search by location
+  public query ({ caller }) func getJobVacanciesByLocation(location : Text) : async [JobVacancyWithOwner] {
     jobVacancies.values().toArray().filter(
-      func(vacancy) {
-        vacancy.location == location;
-      }
-    );
+      func(vacancy) { vacancy.location == location }
+    ).map(withOwner);
   };
 
   public shared ({ caller }) func closeJobVacancy(id : JobVacancyId) : async () {
@@ -911,21 +1198,60 @@ actor {
     };
   };
 
-  public shared ({ caller }) func deleteJobVacancy(id : JobVacancyId) : async () {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
-      Runtime.trap("Unauthorized: Only admins can delete job vacancies");
+  // Delete: allowed by the original poster (by userId) or admin
+  public shared ({ caller }) func deleteJobVacancy(id : JobVacancyId, requestingUserId : Nat) : async () {
+    switch (jobVacancies.get(id)) {
+      case (null) { Runtime.trap("Job vacancy not found") };
+      case (?_vacancy) {
+        let isAdmin = AccessControl.isAdmin(accessControlState, caller);
+        let ownerId = switch (jobVacancyOwners.get(id)) {
+          case (?o) { o }; case (null) { 0 };
+        };
+        let isOwner = ownerId == requestingUserId and requestingUserId != 0;
+        if (not isAdmin and not isOwner) {
+          Runtime.trap("Unauthorized: Only the poster or admin can delete this job");
+        };
+        jobVacancies.remove(id);
+        jobVacancyOwners.remove(id);
+      };
     };
-    if (not jobVacancies.containsKey(id)) {
-      Runtime.trap("Job vacancy not found");
+  };
+
+  // Update: allowed by the original poster (by userId) or admin
+  public shared ({ caller }) func updateJobVacancy(id : JobVacancyId, title : Text, companyName : Text, category : Text, salary : ?Text, location : Text, description : Text, requestingUserId : Nat) : async () {
+    switch (jobVacancies.get(id)) {
+      case (null) { Runtime.trap("Job vacancy not found") };
+      case (?vacancy) {
+        let isAdmin = AccessControl.isAdmin(accessControlState, caller);
+        let ownerId = switch (jobVacancyOwners.get(id)) {
+          case (?o) { o }; case (null) { 0 };
+        };
+        let isOwner = ownerId == requestingUserId and requestingUserId != 0;
+        if (not isAdmin and not isOwner) {
+          Runtime.trap("Unauthorized: Only the poster or admin can edit this job");
+        };
+        let updated : JobVacancy = {
+          id = vacancy.id;
+          title;
+          companyName;
+          category;
+          salary;
+          location;
+          description;
+          status = vacancy.status;
+          postedAt = vacancy.postedAt;
+        };
+        jobVacancies.add(id, updated);
+      };
     };
-    jobVacancies.remove(id);
   };
 
   // JOB APPLICATIONS
 
   type JobApplicationId = Nat;
 
-  type JobApplication = {
+  // Legacy stored type -- DO NOT MODIFY (upgrade compatibility)
+  type JobApplicationLegacy = {
     id : JobApplicationId;
     vacancyId : JobVacancyId;
     applicantName : Text;
@@ -933,13 +1259,26 @@ actor {
     appliedAt : Time.Time;
   };
 
-  let jobApplications = Map.empty<JobApplicationId, JobApplication>();
+  // New full type with applicantUserId, postedByUserId, status
+  type JobApplication = {
+    id : JobApplicationId;
+    vacancyId : JobVacancyId;
+    applicantUserId : Nat;
+    postedByUserId : Nat;
+    applicantName : Text;
+    applicantPhone : Text;
+    status : Text; // "pending" | "accepted" | "rejected"
+    appliedAt : Time.Time;
+  };
+
+  // Legacy stable map -- kept for upgrade compatibility, no longer written to
+  let jobApplications = Map.empty<JobApplicationId, JobApplicationLegacy>();
+  // New stable map with full fields
+  let jobApplicationsV2 = Map.empty<JobApplicationId, JobApplication>();
   var nextApplicationId = 0;
 
-  public shared ({ caller }) func applyToVacancy(vacancyId : JobVacancyId, applicantName : Text, applicantPhone : Text) : async JobApplicationId {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can apply to vacancies");
-    };
+  public shared ({ caller }) func applyToVacancy(vacancyId : JobVacancyId, applicantUserId : Nat, applicantName : Text, applicantPhone : Text) : async JobApplicationId {
+    // Validate vacancy exists and is open
     switch (jobVacancies.get(vacancyId)) {
       case (null) {
         Runtime.trap("Job vacancy not found");
@@ -951,27 +1290,69 @@ actor {
       };
     };
 
+    // Prevent duplicate applications from the same user
+    let existing = jobApplicationsV2.values().toArray().filter(func(app) {
+      app.vacancyId == vacancyId and app.applicantUserId == applicantUserId
+    });
+    if (existing.size() > 0) {
+      Runtime.trap("You have already applied to this vacancy");
+    };
+
+    // Get the posted-by user ID from the owners map
+    let postedByUserId = switch (jobVacancyOwners.get(vacancyId)) {
+      case (?id) { id };
+      case (null) { 0 };
+    };
+
     let id = nextApplicationId;
     let application : JobApplication = {
       id;
       vacancyId;
+      applicantUserId;
+      postedByUserId;
       applicantName;
       applicantPhone;
+      status = "pending";
       appliedAt = Time.now();
     };
-    jobApplications.add(id, application);
+    jobApplicationsV2.add(id, application);
     nextApplicationId += 1;
+
+    // Auto-create notification for the job owner (only if applicant != owner)
+    if (applicantUserId != postedByUserId and postedByUserId != 0) {
+      let jobTitle = switch (jobVacancies.get(vacancyId)) {
+        case (?v) { v.title };
+        case (null) { "Unknown Job" };
+      };
+      let notifId = jobAppNotifCounter;
+      let notif : JobApplicationNotif = {
+        id = notifId;
+        receiverUserId = postedByUserId;
+        senderUserId = applicantUserId;
+        jobId = vacancyId;
+        jobTitle;
+        applicantName;
+        applicantPhone;
+        message = "A user has applied to your job";
+        timestamp = Time.now();
+        isRead = false;
+      };
+      jobAppNotifs := jobAppNotifs.concat([(notifId, notif)]);
+      jobAppNotifCounter += 1;
+    };
+
     id;
   };
 
   public query ({ caller }) func getApplicationsForVacancy(vacancyId : JobVacancyId) : async [JobApplication] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view applications");
-    };
-    jobApplications.values().toArray().filter(
-      func(app) {
-        app.vacancyId == vacancyId;
-      }
+    jobApplicationsV2.values().toArray().filter(
+      func(app) { app.vacancyId == vacancyId }
+    );
+  };
+
+  public query ({ caller }) func getUserApplications(userId : Nat) : async [JobApplication] {
+    jobApplicationsV2.values().toArray().filter(
+      func(app) { app.applicantUserId == userId }
     );
   };
 
@@ -998,9 +1379,44 @@ actor {
   };
 
   let rentals = Map.empty<RentalPropertyId, RentalProperty>();
+  let rentalPropertyOwners = Map.empty<RentalPropertyId, Nat>();
   var nextRentalId = 0;
 
-  public shared ({ caller }) func createRentalProperty(title : Text, description : Text, location : Text, pricePerMonth : Float, numberOfRooms : Nat, contactPhone : Text, ownerName : Text) : async RentalPropertyId {
+  type RentalWithOwner = {
+    id : RentalPropertyId;
+    title : Text;
+    description : Text;
+    location : Text;
+    pricePerMonth : Float;
+    numberOfRooms : Nat;
+    contactPhone : Text;
+    ownerName : Text;
+    status : RentalStatus;
+    createdAt : Time.Time;
+    postedByUserId : Nat;
+  };
+
+  func rentalWithOwner(rental : RentalProperty) : RentalWithOwner {
+    let ownerId = switch (rentalPropertyOwners.get(rental.id)) {
+      case (?id) { id };
+      case (null) { 0 };
+    };
+    {
+      id = rental.id;
+      title = rental.title;
+      description = rental.description;
+      location = rental.location;
+      pricePerMonth = rental.pricePerMonth;
+      numberOfRooms = rental.numberOfRooms;
+      contactPhone = rental.contactPhone;
+      ownerName = rental.ownerName;
+      status = rental.status;
+      createdAt = rental.createdAt;
+      postedByUserId = ownerId;
+    };
+  };
+
+  public shared ({ caller }) func createRentalProperty(title : Text, description : Text, location : Text, pricePerMonth : Float, numberOfRooms : Nat, contactPhone : Text, ownerName : Text, postedByUserId : Nat) : async RentalPropertyId {
     let id = nextRentalId;
     let property : RentalProperty = {
       id;
@@ -1015,17 +1431,18 @@ actor {
       createdAt = Time.now();
     };
     rentals.add(id, property);
+    rentalPropertyOwners.add(id, postedByUserId);
     nextRentalId += 1;
     id;
   };
 
-  public query ({ caller }) func getAvailableRentals() : async [RentalProperty] {
+  public query ({ caller }) func getAvailableRentals() : async [RentalWithOwner] {
     // Public access - anyone can view available rentals
     rentals.values().toArray().filter(
       func(rental) {
         rental.status == #available;
       }
-    );
+    ).map(rentalWithOwner);
   };
 
   public query ({ caller }) func getAllRentals() : async [RentalProperty] {
@@ -1068,14 +1485,22 @@ actor {
     };
   };
 
-  public shared ({ caller }) func deleteRentalProperty(id : RentalPropertyId) : async () {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
-      Runtime.trap("Unauthorized: Only admins can delete rental properties");
+  public shared ({ caller }) func deleteRentalProperty(id : RentalPropertyId, requestingUserId : Nat) : async () {
+    switch (rentals.get(id)) {
+      case (null) { Runtime.trap("Rental property not found") };
+      case (?_) {
+        let isAdmin = AccessControl.isAdmin(accessControlState, caller);
+        let ownerId = switch (rentalPropertyOwners.get(id)) {
+          case (?o) { o }; case (null) { 0 };
+        };
+        let isOwner = ownerId == requestingUserId and requestingUserId != 0;
+        if (not isAdmin and not isOwner) {
+          Runtime.trap("Unauthorized: Only the owner or admin can delete this rental");
+        };
+        rentals.remove(id);
+        rentalPropertyOwners.remove(id);
+      };
     };
-    if (not rentals.containsKey(id)) {
-      Runtime.trap("Rental property not found");
-    };
-    rentals.remove(id);
   };
 
   ////////////////////////////////////////
@@ -1241,6 +1666,13 @@ actor {
   /// OTP VERIFICATION MODULE ///
   ///////////////////////////////
 
+  // Twilio SMS configuration (set by admin)
+  stable var twilioAccountSid : Text = "";
+  stable var twilioBase64Auth : Text = ""; // base64(accountSid:authToken)
+  stable var twilioFromPhone : Text = "";
+  // OTP request rate limiting: phone -> last request timestamp
+  let otpRateLimit = Map.empty<Text, Time.Time>();
+
   type OtpRecord = {
     phone : Text;
     otp : Text;
@@ -1250,8 +1682,62 @@ actor {
 
   let otpRecords = Map.empty<Text, OtpRecord>();
 
-  // Public - OTP generation doesn't require auth
-  public shared ({ caller }) func generateOtp(phone : Text) : async Text {
+  // Admin function to configure Twilio SMS credentials
+  // base64Auth = base64("AccountSID:AuthToken") — compute externally with:
+  //   echo -n "ACxxxxx:your_auth_token" | base64
+  public shared ({ caller }) func setTwilioConfig(accountSid : Text, base64Auth : Text, fromPhone : Text) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can configure Twilio");
+    };
+    twilioAccountSid := accountSid;
+    twilioBase64Auth := base64Auth;
+    twilioFromPhone := fromPhone;
+  };
+
+  // Query the current Twilio config status (returns whether configured, not the secrets)
+  public query func isSmsConfigured() : async Bool {
+    twilioAccountSid != "" and twilioBase64Auth != "" and twilioFromPhone != "";
+  };
+
+  // Transform function required by http-outcalls
+  public query func transformOtpResponse(input : Outcall.TransformationInput) : async Outcall.TransformationOutput {
+    Outcall.transform(input);
+  };
+
+  // Helper: simple URL-encode a string (encodes spaces and special chars for SMS body)
+  private func urlEncode(s : Text) : Text {
+    var result = "";
+    for (c in s.chars()) {
+      switch (c) {
+        case (' ') { result #= "+" };
+        case (':') { result #= "%3A" };
+        case ('=') { result #= "%3D" };
+        case ('&') { result #= "%26" };
+        case ('+') { result #= "%2B" };
+        case _ { result #= Text.fromChar(c) };
+      };
+    };
+    result;
+  };
+
+  // Public - OTP generation: stores OTP and sends SMS via Twilio
+  // Returns true if OTP was generated (and sent if Twilio is configured)
+  // Returns false only on rate-limit or SMS send failure
+  public shared ({ caller }) func generateOtp(phone : Text) : async Bool {
+    // Rate limiting: max 1 OTP request per 60 seconds per phone
+    let now = Time.now();
+    let sixtySecsNanos = 60 * 1_000_000_000;
+    switch (otpRateLimit.get(phone)) {
+      case (?lastTime) {
+        if (now - lastTime < sixtySecsNanos) {
+          return false; // Too many requests
+        };
+      };
+      case (null) {};
+    };
+    otpRateLimit.add(phone, now);
+
+    // Generate 6-digit OTP
     let seed : Time.Time = Time.now();
     let codeInt = ((seed % 900_000_000_000_000) / 1_234_567) % 1_000_000;
     let code = codeInt.toText();
@@ -1265,10 +1751,32 @@ actor {
     };
     otpRecords.add(phone, otpRecord);
 
-    paddedCode;
+    // Send via Twilio if configured
+    if (twilioAccountSid != "" and twilioBase64Auth != "" and twilioFromPhone != "") {
+      try {
+        let url = "https://api.twilio.com/2010-04-01/Accounts/" # twilioAccountSid # "/Messages.json";
+        let msgBody = "Your WorkerPro OTP is: " # paddedCode # ". Valid for 60 seconds. Do not share this code.";
+        let body = "From=" # urlEncode(twilioFromPhone) # "&To=" # urlEncode(phone) # "&Body=" # urlEncode(msgBody);
+        let headers : [Outcall.Header] = [
+          { name = "Content-Type"; value = "application/x-www-form-urlencoded" },
+          { name = "Authorization"; value = "Basic " # twilioBase64Auth },
+        ];
+        let response = await Outcall.httpPostRequest(url, headers, body, transformOtpResponse);
+        // Twilio success responses always contain a message SID ("sid":"SM...").
+        // Error responses (invalid number, trial restriction, auth failure) have no "sid" field.
+        // By checking for this field we correctly detect delivery failures.
+        response.contains(#text "\"sid\":");
+      } catch (_) {
+        // SMS failed but OTP is still stored — return false to signal SMS issue
+        false;
+      };
+    } else {
+      // Twilio not configured — cannot send SMS
+      false;
+    };
   };
 
-  // Public - OTP verification doesn't require auth
+  // Public - OTP verification (60-second expiry, single-use)
   public shared ({ caller }) func verifyOtp(phone : Text, otp : Text) : async Bool {
     switch (otpRecords.get(phone)) {
       case (null) { false };
@@ -1277,9 +1785,9 @@ actor {
         if (record.otp != otp) { return false };
         let now = Time.now();
         let age = now - record.createdAt;
-        let fiveMinutesNanos = 5 * 60 * 1_000_000_000;
+        let sixtySecsNanos = 60 * 1_000_000_000;
 
-        if (age > fiveMinutesNanos) { return false };
+        if (age > sixtySecsNanos) { return false };
         let updated : OtpRecord = {
           phone = record.phone;
           otp = record.otp;
@@ -1288,6 +1796,28 @@ actor {
         };
         otpRecords.add(phone, updated);
         true;
+      };
+    };
+  };
+
+  // Admin-only: get pending OTP for a phone number (only works when SMS is NOT configured, for manual sharing during setup)
+  public shared ({ caller }) func getOtpForPhone(phone : Text) : async Text {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can view OTPs");
+    };
+    // Only expose OTP in test/setup mode (when Twilio is not configured)
+    if (twilioAccountSid != "" and twilioBase64Auth != "" and twilioFromPhone != "") {
+      return "SMS is configured — OTPs are sent directly via SMS";
+    };
+    switch (otpRecords.get(phone)) {
+      case (null) { "No pending OTP for this number" };
+      case (?record) {
+        if (record.used) { return "OTP already used" };
+        let now = Time.now();
+        let age = now - record.createdAt;
+        let sixtySecsNanos = 60 * 1_000_000_000;
+        if (age > sixtySecsNanos) { return "OTP expired — ask user to request a new one" };
+        record.otp;
       };
     };
   };

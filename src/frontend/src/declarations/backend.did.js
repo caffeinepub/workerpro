@@ -37,6 +37,7 @@ export const Priority = IDL.Variant({
 });
 export const Time = IDL.Int;
 export const TaskId = IDL.Nat;
+export const UserNotificationId = IDL.Nat;
 export const WorkEntryId = IDL.Nat;
 export const WorkerId = IDL.Nat;
 export const WorkerStatus = IDL.Variant({
@@ -82,16 +83,18 @@ export const JobVacancyStatus = IDL.Variant({
   'closed' : IDL.Null,
   'open' : IDL.Null,
 });
-export const JobVacancy = IDL.Record({
+export const JobVacancyWithOwner = IDL.Record({
   'id' : JobVacancyId,
   'status' : JobVacancyStatus,
   'title' : IDL.Text,
   'postedAt' : Time,
   'salary' : IDL.Opt(IDL.Text),
   'description' : IDL.Text,
+  'postedByUserId' : IDL.Nat,
   'companyName' : IDL.Text,
   'category' : IDL.Text,
   'location' : IDL.Text,
+  'contactPhone' : IDL.Opt(IDL.Text),
 });
 export const Note = IDL.Record({
   'id' : NoteId,
@@ -167,10 +170,26 @@ export const WorkEntry = IDL.Record({
 });
 export const JobApplication = IDL.Record({
   'id' : JobApplicationId,
+  'status' : IDL.Text,
   'appliedAt' : Time,
   'applicantName' : IDL.Text,
   'applicantPhone' : IDL.Text,
   'vacancyId' : JobVacancyId,
+  'postedByUserId' : IDL.Nat,
+  'applicantUserId' : IDL.Nat,
+});
+export const RentalWithOwner = IDL.Record({
+  'id' : RentalPropertyId,
+  'status' : RentalStatus,
+  'title' : IDL.Text,
+  'ownerName' : IDL.Text,
+  'createdAt' : Time,
+  'numberOfRooms' : IDL.Nat,
+  'description' : IDL.Text,
+  'postedByUserId' : IDL.Nat,
+  'pricePerMonth' : IDL.Float64,
+  'location' : IDL.Text,
+  'contactPhone' : IDL.Text,
 });
 export const BookingStatus = IDL.Variant({
   'cancelled' : IDL.Null,
@@ -193,13 +212,41 @@ export const UserProfile = IDL.Record({
   'name' : IDL.Text,
   'phone' : IDL.Text,
 });
+export const UserNotification = IDL.Record({
+  'id' : UserNotificationId,
+  'title' : IDL.Text,
+  'receiverUserId' : IDL.Nat,
+  'jobId' : IDL.Nat,
+  'isRead' : IDL.Bool,
+  'message' : IDL.Text,
+  'timestamp' : IDL.Int,
+  'senderUserId' : IDL.Nat,
+});
 export const UserId = IDL.Nat;
+export const http_header = IDL.Record({
+  'value' : IDL.Text,
+  'name' : IDL.Text,
+});
+export const http_request_result = IDL.Record({
+  'status' : IDL.Nat,
+  'body' : IDL.Vec(IDL.Nat8),
+  'headers' : IDL.Vec(http_header),
+});
+export const TransformationInput = IDL.Record({
+  'context' : IDL.Vec(IDL.Nat8),
+  'response' : http_request_result,
+});
+export const TransformationOutput = IDL.Record({
+  'status' : IDL.Nat,
+  'body' : IDL.Vec(IDL.Nat8),
+  'headers' : IDL.Vec(http_header),
+});
 
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
   'acceptBooking' : IDL.Func([BookingId], [IDL.Bool], []),
   'applyToVacancy' : IDL.Func(
-      [JobVacancyId, IDL.Text, IDL.Text],
+      [JobVacancyId, IDL.Nat, IDL.Text, IDL.Text],
       [JobApplicationId],
       [],
     ),
@@ -223,7 +270,16 @@ export const idlService = IDL.Service({
       [],
     ),
   'createJobVacancy' : IDL.Func(
-      [IDL.Text, IDL.Text, IDL.Text, IDL.Opt(IDL.Text), IDL.Text, IDL.Text],
+      [
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Opt(IDL.Text),
+        IDL.Text,
+        IDL.Text,
+        IDL.Nat,
+        IDL.Opt(IDL.Text),
+      ],
       [JobVacancyId],
       [],
     ),
@@ -234,7 +290,16 @@ export const idlService = IDL.Service({
       [],
     ),
   'createRentalProperty' : IDL.Func(
-      [IDL.Text, IDL.Text, IDL.Text, IDL.Float64, IDL.Nat, IDL.Text, IDL.Text],
+      [
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Float64,
+        IDL.Nat,
+        IDL.Text,
+        IDL.Text,
+        IDL.Nat,
+      ],
       [RentalPropertyId],
       [],
     ),
@@ -246,6 +311,11 @@ export const idlService = IDL.Service({
   'createTask' : IDL.Func(
       [IDL.Text, IDL.Text, Priority, IDL.Opt(Time)],
       [TaskId],
+      [],
+    ),
+  'createUserNotification' : IDL.Func(
+      [IDL.Nat, IDL.Nat, IDL.Nat, IDL.Text, IDL.Text],
+      [UserNotificationId],
       [],
     ),
   'createWorkEntry' : IDL.Func(
@@ -276,17 +346,23 @@ export const idlService = IDL.Service({
       [IDL.Nat],
       [],
     ),
-  'deleteJobVacancy' : IDL.Func([JobVacancyId], [], []),
+  'deleteJobVacancy' : IDL.Func([JobVacancyId, IDL.Nat], [], []),
   'deleteNote' : IDL.Func([NoteId], [], []),
   'deleteNotification' : IDL.Func([NotificationId], [], []),
-  'deleteRentalProperty' : IDL.Func([RentalPropertyId], [], []),
+  'deleteRentalProperty' : IDL.Func([RentalPropertyId, IDL.Nat], [], []),
   'deleteScheduleEntry' : IDL.Func([ScheduleId], [], []),
   'deleteTask' : IDL.Func([TaskId], [], []),
+  'deleteUserNotification' : IDL.Func([UserNotificationId], [], []),
   'deleteWorkEntry' : IDL.Func([WorkEntryId], [], []),
-  'generateOtp' : IDL.Func([IDL.Text], [IDL.Text], []),
+  'generateOtp' : IDL.Func([IDL.Text], [IDL.Bool], []),
+    'getOtpForPhone' : IDL.Func([IDL.Text], [IDL.Text], []),
   'getActiveWorkers' : IDL.Func([], [IDL.Vec(WorkerProfile)], ['query']),
   'getAllJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
-  'getAllJobVacancies' : IDL.Func([], [IDL.Vec(JobVacancy)], ['query']),
+  'getAllJobVacancies' : IDL.Func(
+      [],
+      [IDL.Vec(JobVacancyWithOwner)],
+      ['query'],
+    ),
   'getAllNotes' : IDL.Func([], [IDL.Vec(Note)], ['query']),
   'getAllNotifications' : IDL.Func([], [IDL.Vec(Notification)], ['query']),
   'getAllRentals' : IDL.Func([], [IDL.Vec(RentalProperty)], ['query']),
@@ -302,19 +378,19 @@ export const idlService = IDL.Service({
     ),
   'getAssignedJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
   'getAvailableJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
-  'getAvailableRentals' : IDL.Func([], [IDL.Vec(RentalProperty)], ['query']),
+  'getAvailableRentals' : IDL.Func([], [IDL.Vec(RentalWithOwner)], ['query']),
   'getBookingsForUser' : IDL.Func([IDL.Nat], [IDL.Vec(Booking)], ['query']),
   'getBookingsForWorker' : IDL.Func([IDL.Nat], [IDL.Vec(Booking)], ['query']),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole__1], ['query']),
   'getJobVacanciesByCategory' : IDL.Func(
       [IDL.Text],
-      [IDL.Vec(JobVacancy)],
+      [IDL.Vec(JobVacancyWithOwner)],
       ['query'],
     ),
   'getJobVacanciesByLocation' : IDL.Func(
       [IDL.Text],
-      [IDL.Vec(JobVacancy)],
+      [IDL.Vec(JobVacancyWithOwner)],
       ['query'],
     ),
   'getNotInterestedJobIds' : IDL.Func(
@@ -323,7 +399,16 @@ export const idlService = IDL.Service({
       ['query'],
     ),
   'getNote' : IDL.Func([NoteId], [Note], ['query']),
-  'getOpenJobVacancies' : IDL.Func([], [IDL.Vec(JobVacancy)], ['query']),
+  'getNotificationsForUser' : IDL.Func(
+      [IDL.Nat],
+      [IDL.Vec(UserNotification)],
+      ['query'],
+    ),
+  'getOpenJobVacancies' : IDL.Func(
+      [],
+      [IDL.Vec(JobVacancyWithOwner)],
+      ['query'],
+    ),
   'getRentalsByLocation' : IDL.Func(
       [IDL.Text],
       [IDL.Vec(RentalProperty)],
@@ -332,6 +417,12 @@ export const idlService = IDL.Service({
   'getScheduleEntry' : IDL.Func([ScheduleId], [ScheduleEntry], ['query']),
   'getTask' : IDL.Func([TaskId], [Task], ['query']),
   'getUnreadCount' : IDL.Func([], [IDL.Nat], ['query']),
+  'getUnreadCountForUser' : IDL.Func([IDL.Nat], [IDL.Nat], ['query']),
+  'getUserApplications' : IDL.Func(
+      [IDL.Nat],
+      [IDL.Vec(JobApplication)],
+      ['query'],
+    ),
   'getUserById' : IDL.Func([UserId], [IDL.Opt(UserAccount)], ['query']),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
@@ -360,6 +451,7 @@ export const idlService = IDL.Service({
       ['query'],
     ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'isSmsConfigured' : IDL.Func([], [IDL.Bool], ['query']),
   'login' : IDL.Func(
       [IDL.Text, IDL.Text],
       [
@@ -370,8 +462,25 @@ export const idlService = IDL.Service({
       ],
       [],
     ),
+  'sendLoginOtp' : IDL.Func(
+      [IDL.Text],
+      [IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text })],
+      [],
+    ),
+  'loginWithOtp' : IDL.Func(
+      [IDL.Text, IDL.Text],
+      [
+        IDL.Variant({
+          'ok' : IDL.Record({ 'userId' : UserId, 'role' : UserRole }),
+          'err' : IDL.Text,
+        }),
+      ],
+      [],
+    ),
   'markAllNotificationsRead' : IDL.Func([], [], []),
+  'markAllUserNotificationsRead' : IDL.Func([IDL.Nat], [], []),
   'markNotificationRead' : IDL.Func([NotificationId], [], []),
+  'markUserNotificationRead' : IDL.Func([UserNotificationId], [], []),
   'register' : IDL.Func(
       [IDL.Text, IDL.Text, IDL.Text, UserRole],
       [IDL.Variant({ 'ok' : UserId, 'err' : IDL.Text })],
@@ -380,7 +489,27 @@ export const idlService = IDL.Service({
   'rejectBooking' : IDL.Func([BookingId], [IDL.Bool], []),
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
   'setJobPreference' : IDL.Func([IDL.Text, JobPostingId, IDL.Bool], [], []),
+  'setTwilioConfig' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
   'setWorkerStatus' : IDL.Func([IDL.Nat, WorkerStatus], [IDL.Bool], []),
+  'transformOtpResponse' : IDL.Func(
+      [TransformationInput],
+      [TransformationOutput],
+      ['query'],
+    ),
+  'updateJobVacancy' : IDL.Func(
+      [
+        JobVacancyId,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Opt(IDL.Text),
+        IDL.Text,
+        IDL.Text,
+        IDL.Nat,
+      ],
+      [],
+      [],
+    ),
   'updateNote' : IDL.Func([NoteId, IDL.Text, IDL.Text], [], []),
   'updateRentalStatus' : IDL.Func([RentalPropertyId, RentalStatus], [], []),
   'updateScheduleEntry' : IDL.Func(
@@ -449,6 +578,7 @@ export const idlFactory = ({ IDL }) => {
   });
   const Time = IDL.Int;
   const TaskId = IDL.Nat;
+  const UserNotificationId = IDL.Nat;
   const WorkEntryId = IDL.Nat;
   const WorkerId = IDL.Nat;
   const WorkerStatus = IDL.Variant({
@@ -494,16 +624,18 @@ export const idlFactory = ({ IDL }) => {
     'closed' : IDL.Null,
     'open' : IDL.Null,
   });
-  const JobVacancy = IDL.Record({
+  const JobVacancyWithOwner = IDL.Record({
     'id' : JobVacancyId,
     'status' : JobVacancyStatus,
     'title' : IDL.Text,
     'postedAt' : Time,
     'salary' : IDL.Opt(IDL.Text),
     'description' : IDL.Text,
+    'postedByUserId' : IDL.Nat,
     'companyName' : IDL.Text,
     'category' : IDL.Text,
     'location' : IDL.Text,
+    'contactPhone' : IDL.Opt(IDL.Text),
   });
   const Note = IDL.Record({
     'id' : NoteId,
@@ -579,10 +711,26 @@ export const idlFactory = ({ IDL }) => {
   });
   const JobApplication = IDL.Record({
     'id' : JobApplicationId,
+    'status' : IDL.Text,
     'appliedAt' : Time,
     'applicantName' : IDL.Text,
     'applicantPhone' : IDL.Text,
     'vacancyId' : JobVacancyId,
+    'postedByUserId' : IDL.Nat,
+    'applicantUserId' : IDL.Nat,
+  });
+  const RentalWithOwner = IDL.Record({
+    'id' : RentalPropertyId,
+    'status' : RentalStatus,
+    'title' : IDL.Text,
+    'ownerName' : IDL.Text,
+    'createdAt' : Time,
+    'numberOfRooms' : IDL.Nat,
+    'description' : IDL.Text,
+    'postedByUserId' : IDL.Nat,
+    'pricePerMonth' : IDL.Float64,
+    'location' : IDL.Text,
+    'contactPhone' : IDL.Text,
   });
   const BookingStatus = IDL.Variant({
     'cancelled' : IDL.Null,
@@ -605,13 +753,38 @@ export const idlFactory = ({ IDL }) => {
     'name' : IDL.Text,
     'phone' : IDL.Text,
   });
+  const UserNotification = IDL.Record({
+    'id' : UserNotificationId,
+    'title' : IDL.Text,
+    'receiverUserId' : IDL.Nat,
+    'jobId' : IDL.Nat,
+    'isRead' : IDL.Bool,
+    'message' : IDL.Text,
+    'timestamp' : IDL.Int,
+    'senderUserId' : IDL.Nat,
+  });
   const UserId = IDL.Nat;
+  const http_header = IDL.Record({ 'value' : IDL.Text, 'name' : IDL.Text });
+  const http_request_result = IDL.Record({
+    'status' : IDL.Nat,
+    'body' : IDL.Vec(IDL.Nat8),
+    'headers' : IDL.Vec(http_header),
+  });
+  const TransformationInput = IDL.Record({
+    'context' : IDL.Vec(IDL.Nat8),
+    'response' : http_request_result,
+  });
+  const TransformationOutput = IDL.Record({
+    'status' : IDL.Nat,
+    'body' : IDL.Vec(IDL.Nat8),
+    'headers' : IDL.Vec(http_header),
+  });
   
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'acceptBooking' : IDL.Func([BookingId], [IDL.Bool], []),
     'applyToVacancy' : IDL.Func(
-        [JobVacancyId, IDL.Text, IDL.Text],
+        [JobVacancyId, IDL.Nat, IDL.Text, IDL.Text],
         [JobApplicationId],
         [],
       ),
@@ -635,7 +808,16 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'createJobVacancy' : IDL.Func(
-        [IDL.Text, IDL.Text, IDL.Text, IDL.Opt(IDL.Text), IDL.Text, IDL.Text],
+        [
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Opt(IDL.Text),
+          IDL.Text,
+          IDL.Text,
+          IDL.Nat,
+          IDL.Opt(IDL.Text),
+        ],
         [JobVacancyId],
         [],
       ),
@@ -654,6 +836,7 @@ export const idlFactory = ({ IDL }) => {
           IDL.Nat,
           IDL.Text,
           IDL.Text,
+          IDL.Nat,
         ],
         [RentalPropertyId],
         [],
@@ -666,6 +849,11 @@ export const idlFactory = ({ IDL }) => {
     'createTask' : IDL.Func(
         [IDL.Text, IDL.Text, Priority, IDL.Opt(Time)],
         [TaskId],
+        [],
+      ),
+    'createUserNotification' : IDL.Func(
+        [IDL.Nat, IDL.Nat, IDL.Nat, IDL.Text, IDL.Text],
+        [UserNotificationId],
         [],
       ),
     'createWorkEntry' : IDL.Func(
@@ -696,17 +884,23 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Nat],
         [],
       ),
-    'deleteJobVacancy' : IDL.Func([JobVacancyId], [], []),
+    'deleteJobVacancy' : IDL.Func([JobVacancyId, IDL.Nat], [], []),
     'deleteNote' : IDL.Func([NoteId], [], []),
     'deleteNotification' : IDL.Func([NotificationId], [], []),
-    'deleteRentalProperty' : IDL.Func([RentalPropertyId], [], []),
+    'deleteRentalProperty' : IDL.Func([RentalPropertyId, IDL.Nat], [], []),
     'deleteScheduleEntry' : IDL.Func([ScheduleId], [], []),
     'deleteTask' : IDL.Func([TaskId], [], []),
+    'deleteUserNotification' : IDL.Func([UserNotificationId], [], []),
     'deleteWorkEntry' : IDL.Func([WorkEntryId], [], []),
-    'generateOtp' : IDL.Func([IDL.Text], [IDL.Text], []),
+    'generateOtp' : IDL.Func([IDL.Text], [IDL.Bool], []),
+    'getOtpForPhone' : IDL.Func([IDL.Text], [IDL.Text], []),
     'getActiveWorkers' : IDL.Func([], [IDL.Vec(WorkerProfile)], ['query']),
     'getAllJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
-    'getAllJobVacancies' : IDL.Func([], [IDL.Vec(JobVacancy)], ['query']),
+    'getAllJobVacancies' : IDL.Func(
+        [],
+        [IDL.Vec(JobVacancyWithOwner)],
+        ['query'],
+      ),
     'getAllNotes' : IDL.Func([], [IDL.Vec(Note)], ['query']),
     'getAllNotifications' : IDL.Func([], [IDL.Vec(Notification)], ['query']),
     'getAllRentals' : IDL.Func([], [IDL.Vec(RentalProperty)], ['query']),
@@ -722,19 +916,19 @@ export const idlFactory = ({ IDL }) => {
       ),
     'getAssignedJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
     'getAvailableJobPostings' : IDL.Func([], [IDL.Vec(JobPosting)], ['query']),
-    'getAvailableRentals' : IDL.Func([], [IDL.Vec(RentalProperty)], ['query']),
+    'getAvailableRentals' : IDL.Func([], [IDL.Vec(RentalWithOwner)], ['query']),
     'getBookingsForUser' : IDL.Func([IDL.Nat], [IDL.Vec(Booking)], ['query']),
     'getBookingsForWorker' : IDL.Func([IDL.Nat], [IDL.Vec(Booking)], ['query']),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole__1], ['query']),
     'getJobVacanciesByCategory' : IDL.Func(
         [IDL.Text],
-        [IDL.Vec(JobVacancy)],
+        [IDL.Vec(JobVacancyWithOwner)],
         ['query'],
       ),
     'getJobVacanciesByLocation' : IDL.Func(
         [IDL.Text],
-        [IDL.Vec(JobVacancy)],
+        [IDL.Vec(JobVacancyWithOwner)],
         ['query'],
       ),
     'getNotInterestedJobIds' : IDL.Func(
@@ -743,7 +937,16 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'getNote' : IDL.Func([NoteId], [Note], ['query']),
-    'getOpenJobVacancies' : IDL.Func([], [IDL.Vec(JobVacancy)], ['query']),
+    'getNotificationsForUser' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Vec(UserNotification)],
+        ['query'],
+      ),
+    'getOpenJobVacancies' : IDL.Func(
+        [],
+        [IDL.Vec(JobVacancyWithOwner)],
+        ['query'],
+      ),
     'getRentalsByLocation' : IDL.Func(
         [IDL.Text],
         [IDL.Vec(RentalProperty)],
@@ -752,6 +955,12 @@ export const idlFactory = ({ IDL }) => {
     'getScheduleEntry' : IDL.Func([ScheduleId], [ScheduleEntry], ['query']),
     'getTask' : IDL.Func([TaskId], [Task], ['query']),
     'getUnreadCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getUnreadCountForUser' : IDL.Func([IDL.Nat], [IDL.Nat], ['query']),
+    'getUserApplications' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Vec(JobApplication)],
+        ['query'],
+      ),
     'getUserById' : IDL.Func([UserId], [IDL.Opt(UserAccount)], ['query']),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
@@ -780,6 +989,7 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'isSmsConfigured' : IDL.Func([], [IDL.Bool], ['query']),
     'login' : IDL.Func(
         [IDL.Text, IDL.Text],
         [
@@ -790,8 +1000,25 @@ export const idlFactory = ({ IDL }) => {
         ],
         [],
       ),
+    'sendLoginOtp' : IDL.Func(
+        [IDL.Text],
+        [IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text })],
+        [],
+      ),
+    'loginWithOtp' : IDL.Func(
+        [IDL.Text, IDL.Text],
+        [
+          IDL.Variant({
+            'ok' : IDL.Record({ 'userId' : UserId, 'role' : UserRole }),
+            'err' : IDL.Text,
+          }),
+        ],
+        [],
+      ),
     'markAllNotificationsRead' : IDL.Func([], [], []),
+    'markAllUserNotificationsRead' : IDL.Func([IDL.Nat], [], []),
     'markNotificationRead' : IDL.Func([NotificationId], [], []),
+    'markUserNotificationRead' : IDL.Func([UserNotificationId], [], []),
     'register' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Text, UserRole],
         [IDL.Variant({ 'ok' : UserId, 'err' : IDL.Text })],
@@ -800,7 +1027,27 @@ export const idlFactory = ({ IDL }) => {
     'rejectBooking' : IDL.Func([BookingId], [IDL.Bool], []),
     'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
     'setJobPreference' : IDL.Func([IDL.Text, JobPostingId, IDL.Bool], [], []),
+    'setTwilioConfig' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
     'setWorkerStatus' : IDL.Func([IDL.Nat, WorkerStatus], [IDL.Bool], []),
+    'transformOtpResponse' : IDL.Func(
+        [TransformationInput],
+        [TransformationOutput],
+        ['query'],
+      ),
+    'updateJobVacancy' : IDL.Func(
+        [
+          JobVacancyId,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Opt(IDL.Text),
+          IDL.Text,
+          IDL.Text,
+          IDL.Nat,
+        ],
+        [],
+        [],
+      ),
     'updateNote' : IDL.Func([NoteId, IDL.Text, IDL.Text], [], []),
     'updateRentalStatus' : IDL.Func([RentalPropertyId, RentalStatus], [], []),
     'updateScheduleEntry' : IDL.Func(

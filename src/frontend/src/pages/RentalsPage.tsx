@@ -1,3 +1,13 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,16 +29,22 @@ import {
   MapPin,
   Phone,
   Search,
+  Trash2,
   User,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
-import type { RentalProperty } from "../hooks/useVacancyQueries";
+import type {
+  RentalProperty,
+  RentalWithOwner,
+} from "../hooks/useVacancyQueries";
 import {
   useCreateRentalProperty,
+  useDeleteRentalProperty,
   useGetAvailableRentals,
 } from "../hooks/useVacancyQueries";
+import type { UserSession } from "../hooks/useWorkerQueries";
 
 const GRADIENT_PRESETS = [
   "from-blue-400 to-indigo-500",
@@ -39,7 +55,7 @@ const GRADIENT_PRESETS = [
   "from-cyan-400 to-sky-500",
 ];
 
-const SAMPLE_RENTALS: RentalProperty[] = [
+const SAMPLE_RENTALS: RentalWithOwner[] = [
   {
     id: BigInt(1),
     title: "Spacious 2BHK Apartment",
@@ -52,6 +68,7 @@ const SAMPLE_RENTALS: RentalProperty[] = [
       "Well-maintained 2BHK with parking, close to metro station and shopping complex. Semi-furnished with modular kitchen.",
     status: "available" as any,
     createdAt: BigInt(Date.now()),
+    postedByUserId: BigInt(0),
   },
   {
     id: BigInt(2),
@@ -65,6 +82,7 @@ const SAMPLE_RENTALS: RentalProperty[] = [
       "Fully furnished 1BHK perfect for IT professionals. Walking distance to major tech parks.",
     status: "available" as any,
     createdAt: BigInt(Date.now()),
+    postedByUserId: BigInt(0),
   },
   {
     id: BigInt(3),
@@ -78,6 +96,7 @@ const SAMPLE_RENTALS: RentalProperty[] = [
       "Independent house with garden, parking for 2 cars, and full backup power. Ideal for families.",
     status: "available" as any,
     createdAt: BigInt(Date.now()),
+    postedByUserId: BigInt(0),
   },
 ];
 
@@ -85,11 +104,20 @@ function RentalCard({
   rental,
   index,
   onViewDetails,
+  currentUserId,
+  onDelete,
 }: {
-  rental: RentalProperty;
+  rental: RentalWithOwner;
   index: number;
-  onViewDetails: (r: RentalProperty) => void;
+  onViewDetails: (r: RentalWithOwner) => void;
+  currentUserId?: bigint;
+  onDelete?: (r: RentalWithOwner) => void;
 }) {
+  const isOwner =
+    currentUserId !== undefined &&
+    currentUserId !== BigInt(0) &&
+    rental.postedByUserId !== undefined &&
+    currentUserId === rental.postedByUserId;
   const gradient =
     GRADIENT_PRESETS[Number(rental.id) % GRADIENT_PRESETS.length];
 
@@ -147,17 +175,30 @@ function RentalCard({
           >
             View Details
           </Button>
-          <Button
-            size="sm"
-            className="flex-1 rounded-full text-xs"
-            data-ocid={`rentals.contact_owner.button.${index + 1}`}
-            asChild
-          >
-            <a href={`tel:${rental.contactPhone}`}>
-              <Phone className="w-3 h-3 mr-1" />
-              Contact
-            </a>
-          </Button>
+          {isOwner ? (
+            <Button
+              size="sm"
+              variant="destructive"
+              className="flex-1 rounded-full text-xs"
+              data-ocid={`rentals.delete_button.${index + 1}`}
+              onClick={() => onDelete?.(rental)}
+            >
+              <Trash2 className="w-3 h-3 mr-1" />
+              Delete
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              className="flex-1 rounded-full text-xs"
+              data-ocid={`rentals.contact_owner.button.${index + 1}`}
+              asChild
+            >
+              <a href={`tel:${rental.contactPhone}`}>
+                <Phone className="w-3 h-3 mr-1" />
+                Contact
+              </a>
+            </Button>
+          )}
         </div>
       </div>
     </motion.div>
@@ -169,7 +210,7 @@ function RentalDetailModal({
   open,
   onClose,
 }: {
-  rental: RentalProperty | null;
+  rental: RentalWithOwner | null;
   open: boolean;
   onClose: () => void;
 }) {
@@ -234,10 +275,33 @@ function RentalDetailModal({
   );
 }
 
-function BrowseRentalsTab() {
+function BrowseRentalsTab({ session }: { session: UserSession | null }) {
   const { data: rentals, isLoading } = useGetAvailableRentals();
+  const deleteMutation = useDeleteRentalProperty();
   const [search, setSearch] = useState("");
-  const [detailRental, setDetailRental] = useState<RentalProperty | null>(null);
+  const [detailRental, setDetailRental] = useState<RentalWithOwner | null>(
+    null,
+  );
+  const [deleteTarget, setDeleteTarget] = useState<RentalWithOwner | null>(
+    null,
+  );
+  const currentUserId = session?.userId;
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || !currentUserId) return;
+    try {
+      await deleteMutation.mutateAsync({
+        id: deleteTarget.id,
+        requestingUserId: currentUserId,
+      });
+      toast.success("Property deleted.");
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error("Failed to delete:", err);
+      toast.error("Failed to delete. Please try again.");
+      setDeleteTarget(null);
+    }
+  };
 
   const displayRentals =
     rentals && rentals.length > 0 ? rentals : SAMPLE_RENTALS;
@@ -300,6 +364,8 @@ function BrowseRentalsTab() {
               rental={r}
               index={i}
               onViewDetails={setDetailRental}
+              currentUserId={currentUserId}
+              onDelete={setDeleteTarget}
             />
           ))}
         </div>
@@ -310,11 +376,38 @@ function BrowseRentalsTab() {
         open={!!detailRental}
         onClose={() => setDetailRental(null)}
       />
+
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+      >
+        <AlertDialogContent data-ocid="rentals.delete.dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Property?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteTarget?.title ?? ""}"?
+              This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-ocid="rentals.delete.cancel_button">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-ocid="rentals.delete.confirm_button"
+              onClick={handleConfirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
-function ListPropertyTab() {
+function ListPropertyTab({ session }: { session: UserSession | null }) {
   const [title, setTitle] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [phone, setPhone] = useState("");
@@ -345,6 +438,7 @@ function ListPropertyTab() {
         numberOfRooms: BigInt(rooms),
         contactPhone: phone.trim(),
         ownerName: ownerName.trim(),
+        postedByUserId: session?.userId ?? BigInt(0),
       });
       toast.success("Property listed successfully!");
       setTitle("");
@@ -453,7 +547,9 @@ function ListPropertyTab() {
   );
 }
 
-export default function RentalsPage() {
+export default function RentalsPage({
+  session,
+}: { session: UserSession | null }) {
   return (
     <div className="flex flex-col min-h-full pb-20">
       {/* Header */}
@@ -494,10 +590,10 @@ export default function RentalsPage() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="browse">
-            <BrowseRentalsTab />
+            <BrowseRentalsTab session={session} />
           </TabsContent>
           <TabsContent value="list">
-            <ListPropertyTab />
+            <ListPropertyTab session={session} />
           </TabsContent>
         </Tabs>
       </div>

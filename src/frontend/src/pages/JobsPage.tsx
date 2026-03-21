@@ -1,3 +1,13 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,20 +31,30 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Briefcase,
   Building2,
+  CalendarDays,
   DollarSign,
+  Edit,
+  Eye,
   Loader2,
   MapPin,
+  Phone,
   Search,
+  Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useCreateUserNotification } from "../hooks/useUserNotificationQueries";
 import type { JobVacancy } from "../hooks/useVacancyQueries";
 import {
   useApplyToVacancy,
   useCreateJobVacancy,
+  useDeleteJobVacancy,
   useGetOpenJobVacancies,
+  useGetUserApplications,
+  useUpdateJobVacancy,
 } from "../hooks/useVacancyQueries";
+import type { UserSession } from "../hooks/useWorkerQueries";
 
 const CATEGORY_OPTIONS = [
   "Painter",
@@ -66,6 +86,8 @@ const SAMPLE_VACANCIES: JobVacancy[] = [
       "Looking for an experienced electrician for residential wiring projects.",
     status: "open" as any,
     postedAt: BigInt(Date.now()),
+    postedByUserId: BigInt(0),
+    contactPhone: "+91 98765 43210",
   },
   {
     id: BigInt(2),
@@ -78,6 +100,7 @@ const SAMPLE_VACANCIES: JobVacancy[] = [
       "Daily housekeeping tasks for residential apartments in central Bangalore.",
     status: "open" as any,
     postedAt: BigInt(Date.now()),
+    postedByUserId: BigInt(0),
   },
   {
     id: BigInt(3),
@@ -90,6 +113,8 @@ const SAMPLE_VACANCIES: JobVacancy[] = [
       "Handle plumbing installations and maintenance for commercial spaces.",
     status: "open" as any,
     postedAt: BigInt(Date.now()),
+    postedByUserId: BigInt(0),
+    contactPhone: "+91 91234 56789",
   },
   {
     id: BigInt(4),
@@ -101,74 +126,13 @@ const SAMPLE_VACANCIES: JobVacancy[] = [
       "Skilled carpenter needed for custom furniture creation and installation.",
     status: "open" as any,
     postedAt: BigInt(Date.now()),
+    postedByUserId: BigInt(0),
   },
 ];
 
-function JobVacancyCard({
-  vacancy,
-  onApply,
-}: {
-  vacancy: JobVacancy;
-  onApply: (v: JobVacancy) => void;
-}) {
-  const catColor =
-    CATEGORY_COLORS[vacancy.category] ?? "bg-gray-100 text-gray-700";
+// ── Details Modal ─────────────────────────────────────────────────────────
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="worker-card p-4 flex flex-col gap-3"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1">
-          <h3 className="font-display font-semibold text-sm text-foreground leading-tight">
-            {vacancy.title}
-          </h3>
-          <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-            <Building2 className="w-3 h-3" />
-            <span>{vacancy.companyName}</span>
-          </div>
-        </div>
-        <Badge
-          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border-0 flex-shrink-0 ${catColor}`}
-        >
-          {vacancy.category}
-        </Badge>
-      </div>
-
-      <div className="flex flex-col gap-1">
-        {vacancy.salary && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <DollarSign className="w-3 h-3 text-green-500" />
-            <span className="font-medium text-green-600">{vacancy.salary}</span>
-          </div>
-        )}
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <MapPin className="w-3 h-3" />
-          <span>{vacancy.location}</span>
-        </div>
-      </div>
-
-      {vacancy.description && (
-        <p className="text-xs text-muted-foreground line-clamp-2">
-          {vacancy.description}
-        </p>
-      )}
-
-      <Button
-        size="sm"
-        data-ocid={`jobs.apply_now.button.${Number(vacancy.id)}`}
-        onClick={() => onApply(vacancy)}
-        className="w-full rounded-full text-xs font-semibold"
-      >
-        Apply Now
-      </Button>
-    </motion.div>
-  );
-}
-
-function ApplyModal({
+function DetailsModal({
   vacancy,
   open,
   onClose,
@@ -177,11 +141,314 @@ function ApplyModal({
   open: boolean;
   onClose: () => void;
 }) {
+  if (!vacancy) return null;
+  const postedDate = new Date(Number(vacancy.postedAt)).toLocaleDateString(
+    "en-IN",
+    { year: "numeric", month: "short", day: "numeric" },
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent data-ocid="jobs.details.dialog" className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{vacancy.title}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 pt-1 text-sm">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Building2 className="w-4 h-4 flex-shrink-0" />
+            <span>{vacancy.companyName}</span>
+          </div>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <MapPin className="w-4 h-4 flex-shrink-0" />
+            <span>{vacancy.location}</span>
+          </div>
+          {vacancy.salary && (
+            <div className="flex items-center gap-2 text-green-600 font-medium">
+              <DollarSign className="w-4 h-4 flex-shrink-0" />
+              <span>{vacancy.salary}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <CalendarDays className="w-4 h-4 flex-shrink-0" />
+            <span>Posted {postedDate}</span>
+          </div>
+          {vacancy.description && (
+            <p className="text-foreground leading-relaxed pt-1">
+              {vacancy.description}
+            </p>
+          )}
+        </div>
+        <Button
+          data-ocid="jobs.details.close_button"
+          variant="outline"
+          className="w-full mt-2 rounded-full"
+          onClick={onClose}
+        >
+          Close
+        </Button>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Contact Modal ─────────────────────────────────────────────────────────
+
+function ContactModal({
+  vacancy,
+  open,
+  onClose,
+}: {
+  vacancy: JobVacancy | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  if (!vacancy) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent data-ocid="jobs.contact.dialog" className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Contact Employer</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 pt-1 text-sm">
+          <div>
+            <p className="font-semibold text-foreground">{vacancy.title}</p>
+            <div className="flex items-center gap-1.5 mt-1 text-muted-foreground">
+              <Building2 className="w-3.5 h-3.5" />
+              <span>{vacancy.companyName}</span>
+            </div>
+          </div>
+          {vacancy.contactPhone ? (
+            <div className="pt-2">
+              <p className="text-muted-foreground mb-3">
+                You can reach the employer directly at:
+              </p>
+              <Button
+                data-ocid="jobs.contact.call_button"
+                className="w-full rounded-full"
+                onClick={() =>
+                  window.open(`tel:${vacancy.contactPhone}`, "_self")
+                }
+              >
+                <Phone className="w-4 h-4 mr-2" />
+                Call Now: {vacancy.contactPhone}
+              </Button>
+            </div>
+          ) : (
+            <p className="text-muted-foreground">
+              Contact {vacancy.companyName} directly for this position at{" "}
+              {vacancy.location}.
+            </p>
+          )}
+        </div>
+        <Button
+          data-ocid="jobs.contact.close_button"
+          variant="outline"
+          className="w-full mt-1 rounded-full"
+          onClick={onClose}
+        >
+          Close
+        </Button>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Edit Modal ────────────────────────────────────────────────────────────
+
+function EditVacancyModal({
+  vacancy,
+  open,
+  onClose,
+  requestingUserId,
+}: {
+  vacancy: JobVacancy | null;
+  open: boolean;
+  onClose: () => void;
+  requestingUserId: bigint;
+}) {
+  const [title, setTitle] = useState(vacancy?.title ?? "");
+  const [company, setCompany] = useState(vacancy?.companyName ?? "");
+  const [category, setCategory] = useState(vacancy?.category ?? "");
+  const [location, setLocation] = useState(vacancy?.location ?? "");
+  const [salary, setSalary] = useState(vacancy?.salary ?? "");
+  const [description, setDescription] = useState(vacancy?.description ?? "");
+  const updateMutation = useUpdateJobVacancy();
+
+  const handleOpen = (v: JobVacancy | null) => {
+    setTitle(v?.title ?? "");
+    setCompany(v?.companyName ?? "");
+    setCategory(v?.category ?? "");
+    setLocation(v?.location ?? "");
+    setSalary(v?.salary ?? "");
+    setDescription(v?.description ?? "");
+  };
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: effect needed for modal reset
+  if (open && vacancy && title === "" && vacancy.title !== "") {
+    handleOpen(vacancy);
+  }
+
+  const handleSubmit = async () => {
+    if (
+      !vacancy ||
+      !title.trim() ||
+      !company.trim() ||
+      !category ||
+      !location.trim()
+    ) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+    try {
+      await updateMutation.mutateAsync({
+        id: vacancy.id,
+        title: title.trim(),
+        companyName: company.trim(),
+        category,
+        salary: salary.trim() || null,
+        location: location.trim(),
+        description: description.trim(),
+        requestingUserId,
+      });
+      toast.success("Job vacancy updated successfully!");
+      onClose();
+    } catch (err) {
+      console.error("Failed to update job vacancy:", err);
+      toast.error("Failed to update. Please try again.");
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+        else if (vacancy) handleOpen(vacancy);
+      }}
+    >
+      <DialogContent data-ocid="jobs.edit.dialog" className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Edit Job Vacancy</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 pt-1">
+          <div className="space-y-1">
+            <Label htmlFor="edit-title">Job Title *</Label>
+            <Input
+              id="edit-title"
+              data-ocid="jobs.edit_title.input"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Senior Electrician"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="edit-company">Company Name *</Label>
+            <Input
+              id="edit-company"
+              data-ocid="jobs.edit_company.input"
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+              placeholder="e.g. ABC Services"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>Category *</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger data-ocid="jobs.edit_category.select">
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                {CATEGORY_OPTIONS.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="edit-location">Location *</Label>
+            <Input
+              id="edit-location"
+              data-ocid="jobs.edit_location.input"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="e.g. Koramangala, Bangalore"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="edit-salary">Salary (optional)</Label>
+            <Input
+              id="edit-salary"
+              data-ocid="jobs.edit_salary.input"
+              value={salary}
+              onChange={(e) => setSalary(e.target.value)}
+              placeholder="e.g. ₹20,000/mo"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="edit-description">Description</Label>
+            <Textarea
+              id="edit-description"
+              data-ocid="jobs.edit_description.textarea"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              placeholder="Describe the role…"
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button
+              data-ocid="jobs.edit.cancel_button"
+              variant="outline"
+              className="flex-1 rounded-full"
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+            <Button
+              data-ocid="jobs.edit.save_button"
+              className="flex-1 rounded-full"
+              onClick={handleSubmit}
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              {updateMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Apply Modal ───────────────────────────────────────────────────────────
+
+function ApplyModal({
+  vacancy,
+  open,
+  onClose,
+  session,
+}: {
+  vacancy: JobVacancy | null;
+  open: boolean;
+  onClose: () => void;
+  session: UserSession | null;
+}) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const applyMutation = useApplyToVacancy();
+  const createNotification = useCreateUserNotification();
+  const applicantUserId = session?.userId ?? BigInt(0);
 
   const handleSubmit = async () => {
+    if (!session) {
+      toast.error("Please log in to apply for jobs");
+      return;
+    }
     if (!vacancy || !name.trim() || !phone.trim()) {
       toast.error("Please fill in all fields");
       return;
@@ -189,16 +456,36 @@ function ApplyModal({
     try {
       await applyMutation.mutateAsync({
         vacancyId: vacancy.id,
+        applicantUserId,
         applicantName: name.trim(),
         applicantPhone: phone.trim(),
       });
+      // Notify the job owner
+      if (vacancy.postedByUserId && vacancy.postedByUserId !== BigInt(0)) {
+        try {
+          await createNotification.mutateAsync({
+            receiverUserId: vacancy.postedByUserId,
+            senderUserId: applicantUserId,
+            jobId: vacancy.id,
+            title: "New Job Application",
+            message: `${name.trim()} applied to your job: ${vacancy.title}`,
+          });
+        } catch (_notifErr) {
+          // Notification failure should not block the user
+          console.error("Failed to send notification", _notifErr);
+        }
+      }
       toast.success("Application submitted successfully!");
       setName("");
       setPhone("");
       onClose();
     } catch (err) {
       console.error("Failed to submit application:", err);
-      toast.error("Failed to submit application. Please try again.");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to submit application. Please try again.",
+      );
     }
   };
 
@@ -206,7 +493,7 @@ function ApplyModal({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent data-ocid="jobs.apply.dialog" className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Apply for {vacancy?.title}</DialogTitle>
+          <DialogTitle>Apply for {vacancy?.title ?? ""}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-2">
           <div className="space-y-1.5">
@@ -247,11 +534,177 @@ function ApplyModal({
   );
 }
 
-function BrowseJobsTab() {
+// ── Job Vacancy Card ──────────────────────────────────────────────────────
+
+function JobVacancyCard({
+  vacancy,
+  onApply,
+  currentUserId,
+  onDelete,
+  onEdit,
+  onViewDetails,
+  onContact,
+  hasApplied,
+}: {
+  vacancy: JobVacancy;
+  onApply: (v: JobVacancy) => void;
+  currentUserId?: bigint;
+  onDelete?: (v: JobVacancy) => void;
+  onEdit?: (v: JobVacancy) => void;
+  onViewDetails?: (v: JobVacancy) => void;
+  onContact?: (v: JobVacancy) => void;
+  hasApplied?: boolean;
+}) {
+  const catColor =
+    CATEGORY_COLORS[vacancy.category] ?? "bg-gray-100 text-gray-700";
+  const isOwner =
+    currentUserId !== undefined &&
+    currentUserId === vacancy.postedByUserId &&
+    currentUserId !== BigInt(0);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="worker-card p-4 flex flex-col gap-3"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="font-display font-semibold text-sm text-foreground leading-tight">
+              {vacancy.title}
+            </h3>
+            {isOwner && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200 flex-shrink-0">
+                Your Post
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+            <Building2 className="w-3 h-3" />
+            <span>{vacancy.companyName}</span>
+          </div>
+        </div>
+        <Badge
+          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border-0 flex-shrink-0 ${catColor}`}
+        >
+          {vacancy.category}
+        </Badge>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        {vacancy.salary && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <DollarSign className="w-3 h-3 text-green-500" />
+            <span className="font-medium text-green-600">{vacancy.salary}</span>
+          </div>
+        )}
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <MapPin className="w-3 h-3" />
+          <span>{vacancy.location}</span>
+        </div>
+      </div>
+
+      {vacancy.description && (
+        <p className="text-xs text-muted-foreground line-clamp-2">
+          {vacancy.description}
+        </p>
+      )}
+
+      {isOwner ? (
+        // Owner view: View Details + Edit/Delete
+        <div className="flex flex-col gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            data-ocid={`jobs.view_details.button.${Number(vacancy.id)}`}
+            onClick={() => onViewDetails?.(vacancy)}
+            className="w-full rounded-full text-xs font-semibold"
+          >
+            <Eye className="w-3 h-3 mr-1" />
+            View Details
+          </Button>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              data-ocid={`jobs.edit.button.${Number(vacancy.id)}`}
+              onClick={() => onEdit?.(vacancy)}
+              className="flex-1 rounded-full text-xs font-semibold"
+            >
+              <Edit className="w-3 h-3 mr-1" />
+              Edit
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              data-ocid={`jobs.delete_button.${Number(vacancy.id)}`}
+              onClick={() => onDelete?.(vacancy)}
+              className="flex-1 rounded-full text-xs font-semibold"
+            >
+              <Trash2 className="w-3 h-3 mr-1" />
+              Delete
+            </Button>
+          </div>
+        </div>
+      ) : (
+        // Other users view: Apply Now + View Details + Contact
+        <div className="flex flex-col gap-2">
+          {hasApplied && (
+            <span className="self-start text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
+              ✓ Applied
+            </span>
+          )}
+          <Button
+            size="sm"
+            data-ocid={`jobs.apply_now.button.${Number(vacancy.id)}`}
+            onClick={() => !hasApplied && onApply(vacancy)}
+            disabled={hasApplied}
+            className="w-full rounded-full text-xs font-semibold"
+          >
+            {hasApplied ? "Already Applied" : "Apply Now"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            data-ocid={`jobs.view_details.button.${Number(vacancy.id)}`}
+            onClick={() => onViewDetails?.(vacancy)}
+            className="w-full rounded-full text-xs font-semibold"
+          >
+            <Eye className="w-3 h-3 mr-1" />
+            View Details
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            data-ocid={`jobs.contact.button.${Number(vacancy.id)}`}
+            onClick={() => onContact?.(vacancy)}
+            className="w-full rounded-full text-xs font-semibold"
+          >
+            <Phone className="w-3 h-3 mr-1" />
+            Contact
+          </Button>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+// ── Browse Jobs Tab ───────────────────────────────────────────────────────
+
+function BrowseJobsTab({ session }: { session: UserSession | null }) {
   const { data: vacancies, isLoading } = useGetOpenJobVacancies();
+  const { data: userApplications } = useGetUserApplications(session?.userId);
+  const deleteMutation = useDeleteJobVacancy();
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
   const [applyTarget, setApplyTarget] = useState<JobVacancy | null>(null);
+  const [editTarget, setEditTarget] = useState<JobVacancy | null>(null);
+  const [detailTarget, setDetailTarget] = useState<JobVacancy | null>(null);
+  const [contactTarget, setContactTarget] = useState<JobVacancy | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<JobVacancy | null>(null);
+
+  const currentUserId = session?.userId;
 
   const displayVacancies =
     vacancies && vacancies.length > 0 ? vacancies : SAMPLE_VACANCIES;
@@ -267,6 +720,30 @@ function BrowseJobsTab() {
       v.category.toLowerCase() === filterCategory.toLowerCase();
     return matchesSearch && matchesCat;
   });
+
+  const appliedVacancyIds = new Set(
+    (userApplications ?? []).map((a) => String(a.vacancyId)),
+  );
+
+  const handleDelete = (v: JobVacancy) => {
+    setDeleteTarget(v);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteMutation.mutateAsync({
+        id: deleteTarget.id,
+        requestingUserId: currentUserId ?? BigInt(0),
+      });
+      toast.success("Job vacancy deleted.");
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error("Failed to delete:", err);
+      toast.error("Failed to delete. Please try again.");
+      setDeleteTarget(null);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -341,7 +818,16 @@ function BrowseJobsTab() {
               transition={{ delay: i * 0.05 }}
               data-ocid={`jobs.item.${i + 1}`}
             >
-              <JobVacancyCard vacancy={v} onApply={setApplyTarget} />
+              <JobVacancyCard
+                vacancy={v}
+                onApply={setApplyTarget}
+                currentUserId={currentUserId}
+                onDelete={handleDelete}
+                onEdit={setEditTarget}
+                onViewDetails={setDetailTarget}
+                onContact={setContactTarget}
+                hasApplied={appliedVacancyIds.has(String(v.id))}
+              />
             </motion.div>
           ))}
         </div>
@@ -351,18 +837,68 @@ function BrowseJobsTab() {
         vacancy={applyTarget}
         open={!!applyTarget}
         onClose={() => setApplyTarget(null)}
+        session={session}
+      />
+
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+      >
+        <AlertDialogContent data-ocid="jobs.delete.dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Job Post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteTarget?.title ?? ""}"\?
+              This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-ocid="jobs.delete.cancel_button">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-ocid="jobs.delete.confirm_button"
+              onClick={handleConfirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <EditVacancyModal
+        vacancy={editTarget}
+        open={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        requestingUserId={currentUserId ?? BigInt(0)}
+      />
+
+      <DetailsModal
+        vacancy={detailTarget}
+        open={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+      />
+
+      <ContactModal
+        vacancy={contactTarget}
+        open={!!contactTarget}
+        onClose={() => setContactTarget(null)}
       />
     </div>
   );
 }
 
-function PostJobTab() {
+// ── Post Job Tab ──────────────────────────────────────────────────────────
+
+function PostJobTab({ session }: { session: UserSession | null }) {
   const [title, setTitle] = useState("");
   const [company, setCompany] = useState("");
   const [category, setCategory] = useState("");
   const [location, setLocation] = useState("");
   const [salary, setSalary] = useState("");
   const [description, setDescription] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
   const createMutation = useCreateJobVacancy();
 
   const handleSubmit = async () => {
@@ -378,6 +914,8 @@ function PostJobTab() {
         salary: salary.trim() || null,
         location: location.trim(),
         description: description.trim(),
+        postedByUserId: session?.userId ?? BigInt(0),
+        contactPhone: contactPhone.trim() || null,
       });
       toast.success("Job vacancy posted successfully!");
       setTitle("");
@@ -386,9 +924,14 @@ function PostJobTab() {
       setLocation("");
       setSalary("");
       setDescription("");
+      setContactPhone("");
     } catch (err) {
       console.error("Failed to post job vacancy:", err);
-      toast.error("Failed to post job vacancy. Please try again.");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to post job vacancy. Please try again.",
+      );
     }
   };
 
@@ -450,6 +993,17 @@ function PostJobTab() {
         />
       </div>
       <div className="space-y-1.5">
+        <Label htmlFor="job-contact-phone">Contact Phone (optional)</Label>
+        <Input
+          id="job-contact-phone"
+          data-ocid="jobs.post_contact_phone.input"
+          placeholder="e.g. +91 98765 43210"
+          type="tel"
+          value={contactPhone}
+          onChange={(e) => setContactPhone(e.target.value)}
+        />
+      </div>
+      <div className="space-y-1.5">
         <Label htmlFor="job-description">Description</Label>
         <Textarea
           id="job-description"
@@ -475,7 +1029,9 @@ function PostJobTab() {
   );
 }
 
-export default function JobsPage() {
+// ── Jobs Page ─────────────────────────────────────────────────────────────
+
+export default function JobsPage({ session }: { session: UserSession | null }) {
   return (
     <div className="flex flex-col min-h-full pb-20">
       {/* Header */}
@@ -516,10 +1072,10 @@ export default function JobsPage() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="browse">
-            <BrowseJobsTab />
+            <BrowseJobsTab session={session} />
           </TabsContent>
           <TabsContent value="post">
-            <PostJobTab />
+            <PostJobTab session={session} />
           </TabsContent>
         </Tabs>
       </div>

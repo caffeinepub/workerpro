@@ -34,10 +34,13 @@ export type DayOfWeek = { 'tuesday' : null } |
   { 'monday' : null };
 export interface JobApplication {
   'id' : JobApplicationId,
+  'status' : string,
   'appliedAt' : Time,
   'applicantName' : string,
   'applicantPhone' : string,
   'vacancyId' : JobVacancyId,
+  'postedByUserId' : bigint,
+  'applicantUserId' : bigint,
 }
 export type JobApplicationId = bigint;
 export interface JobPosting {
@@ -60,20 +63,22 @@ export type JobStatus = { 'assigned' : null } |
   { 'deleted' : null } |
   { 'completed' : null } |
   { 'available' : null };
-export interface JobVacancy {
+export type JobVacancyId = bigint;
+export type JobVacancyStatus = { 'closed' : null } |
+  { 'open' : null };
+export interface JobVacancyWithOwner {
   'id' : JobVacancyId,
   'status' : JobVacancyStatus,
   'title' : string,
   'postedAt' : Time,
   'salary' : [] | [string],
   'description' : string,
+  'postedByUserId' : bigint,
   'companyName' : string,
   'category' : string,
   'location' : string,
+  'contactPhone' : [] | [string],
 }
-export type JobVacancyId = bigint;
-export type JobVacancyStatus = { 'closed' : null } |
-  { 'open' : null };
 export interface Note {
   'id' : NoteId,
   'title' : string,
@@ -109,6 +114,19 @@ export interface RentalProperty {
 export type RentalPropertyId = bigint;
 export type RentalStatus = { 'rented' : null } |
   { 'available' : null };
+export interface RentalWithOwner {
+  'id' : RentalPropertyId,
+  'status' : RentalStatus,
+  'title' : string,
+  'ownerName' : string,
+  'createdAt' : Time,
+  'numberOfRooms' : bigint,
+  'description' : string,
+  'postedByUserId' : bigint,
+  'pricePerMonth' : number,
+  'location' : string,
+  'contactPhone' : string,
+}
 export interface ScheduleEntry {
   'id' : ScheduleId,
   'startTime' : bigint,
@@ -128,6 +146,15 @@ export interface Task {
 }
 export type TaskId = bigint;
 export type Time = bigint;
+export interface TransformationInput {
+  'context' : Uint8Array,
+  'response' : http_request_result,
+}
+export interface TransformationOutput {
+  'status' : bigint,
+  'body' : Uint8Array,
+  'headers' : Array<http_header>,
+}
 export interface UserAccount {
   'id' : bigint,
   'emailOrPhone' : string,
@@ -137,6 +164,17 @@ export interface UserAccount {
   'passwordHash' : string,
 }
 export type UserId = bigint;
+export interface UserNotification {
+  'id' : UserNotificationId,
+  'title' : string,
+  'receiverUserId' : bigint,
+  'jobId' : bigint,
+  'isRead' : boolean,
+  'message' : string,
+  'timestamp' : bigint,
+  'senderUserId' : bigint,
+}
+export type UserNotificationId = bigint;
 export interface UserProfile {
   'userId' : [] | [bigint],
   'name' : string,
@@ -178,11 +216,17 @@ export interface WorkerProfile {
 export type WorkerStatus = { 'active' : null } |
   { 'blocked' : null } |
   { 'inactive' : null };
+export interface http_header { 'value' : string, 'name' : string }
+export interface http_request_result {
+  'status' : bigint,
+  'body' : Uint8Array,
+  'headers' : Array<http_header>,
+}
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'acceptBooking' : ActorMethod<[BookingId], boolean>,
   'applyToVacancy' : ActorMethod<
-    [JobVacancyId, string, string],
+    [JobVacancyId, bigint, string, string],
     JobApplicationId
   >,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole__1], undefined>,
@@ -202,7 +246,16 @@ export interface _SERVICE {
     JobPostingId
   >,
   'createJobVacancy' : ActorMethod<
-    [string, string, string, [] | [string], string, string],
+    [
+      string,
+      string,
+      string,
+      [] | [string],
+      string,
+      string,
+      bigint,
+      [] | [string],
+    ],
     JobVacancyId
   >,
   'createNote' : ActorMethod<[string, string], NoteId>,
@@ -211,7 +264,7 @@ export interface _SERVICE {
     NotificationId
   >,
   'createRentalProperty' : ActorMethod<
-    [string, string, string, number, bigint, string, string],
+    [string, string, string, number, bigint, string, string, bigint],
     RentalPropertyId
   >,
   'createScheduleEntry' : ActorMethod<
@@ -219,6 +272,10 @@ export interface _SERVICE {
     ScheduleId
   >,
   'createTask' : ActorMethod<[string, string, Priority, [] | [Time]], TaskId>,
+  'createUserNotification' : ActorMethod<
+    [bigint, bigint, bigint, string, string],
+    UserNotificationId
+  >,
   'createWorkEntry' : ActorMethod<
     [string, string, string, bigint, bigint, number, number, string],
     WorkEntryId
@@ -227,17 +284,19 @@ export interface _SERVICE {
     [bigint, string, string, string, number, string, number, number],
     bigint
   >,
-  'deleteJobVacancy' : ActorMethod<[JobVacancyId], undefined>,
+  'deleteJobVacancy' : ActorMethod<[JobVacancyId, bigint], undefined>,
   'deleteNote' : ActorMethod<[NoteId], undefined>,
   'deleteNotification' : ActorMethod<[NotificationId], undefined>,
-  'deleteRentalProperty' : ActorMethod<[RentalPropertyId], undefined>,
+  'deleteRentalProperty' : ActorMethod<[RentalPropertyId, bigint], undefined>,
   'deleteScheduleEntry' : ActorMethod<[ScheduleId], undefined>,
   'deleteTask' : ActorMethod<[TaskId], undefined>,
+  'deleteUserNotification' : ActorMethod<[UserNotificationId], undefined>,
   'deleteWorkEntry' : ActorMethod<[WorkEntryId], undefined>,
-  'generateOtp' : ActorMethod<[string], string>,
+  'generateOtp' : ActorMethod<[string], boolean>,
+  'getOtpForPhone' : ActorMethod<[string], string>,
   'getActiveWorkers' : ActorMethod<[], Array<WorkerProfile>>,
   'getAllJobPostings' : ActorMethod<[], Array<JobPosting>>,
-  'getAllJobVacancies' : ActorMethod<[], Array<JobVacancy>>,
+  'getAllJobVacancies' : ActorMethod<[], Array<JobVacancyWithOwner>>,
   'getAllNotes' : ActorMethod<[], Array<Note>>,
   'getAllNotifications' : ActorMethod<[], Array<Notification>>,
   'getAllRentals' : ActorMethod<[], Array<RentalProperty>>,
@@ -252,20 +311,29 @@ export interface _SERVICE {
   >,
   'getAssignedJobPostings' : ActorMethod<[], Array<JobPosting>>,
   'getAvailableJobPostings' : ActorMethod<[], Array<JobPosting>>,
-  'getAvailableRentals' : ActorMethod<[], Array<RentalProperty>>,
+  'getAvailableRentals' : ActorMethod<[], Array<RentalWithOwner>>,
   'getBookingsForUser' : ActorMethod<[bigint], Array<Booking>>,
   'getBookingsForWorker' : ActorMethod<[bigint], Array<Booking>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole__1>,
-  'getJobVacanciesByCategory' : ActorMethod<[string], Array<JobVacancy>>,
-  'getJobVacanciesByLocation' : ActorMethod<[string], Array<JobVacancy>>,
+  'getJobVacanciesByCategory' : ActorMethod<
+    [string],
+    Array<JobVacancyWithOwner>
+  >,
+  'getJobVacanciesByLocation' : ActorMethod<
+    [string],
+    Array<JobVacancyWithOwner>
+  >,
   'getNotInterestedJobIds' : ActorMethod<[string], Array<JobPostingId>>,
   'getNote' : ActorMethod<[NoteId], Note>,
-  'getOpenJobVacancies' : ActorMethod<[], Array<JobVacancy>>,
+  'getNotificationsForUser' : ActorMethod<[bigint], Array<UserNotification>>,
+  'getOpenJobVacancies' : ActorMethod<[], Array<JobVacancyWithOwner>>,
   'getRentalsByLocation' : ActorMethod<[string], Array<RentalProperty>>,
   'getScheduleEntry' : ActorMethod<[ScheduleId], ScheduleEntry>,
   'getTask' : ActorMethod<[TaskId], Task>,
   'getUnreadCount' : ActorMethod<[], bigint>,
+  'getUnreadCountForUser' : ActorMethod<[bigint], bigint>,
+  'getUserApplications' : ActorMethod<[bigint], Array<JobApplication>>,
   'getUserById' : ActorMethod<[UserId], [] | [UserAccount]>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'getWorkEntriesByDate' : ActorMethod<[string], Array<WorkEntry>>,
@@ -274,13 +342,16 @@ export interface _SERVICE {
   'getWorkEntry' : ActorMethod<[WorkEntryId], WorkEntry>,
   'getWorkerProfileByUserId' : ActorMethod<[bigint], [] | [WorkerProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
+  'isSmsConfigured' : ActorMethod<[], boolean>,
   'login' : ActorMethod<
     [string, string],
     { 'ok' : { 'userId' : UserId, 'role' : UserRole } } |
       { 'err' : string }
   >,
   'markAllNotificationsRead' : ActorMethod<[], undefined>,
+  'markAllUserNotificationsRead' : ActorMethod<[bigint], undefined>,
   'markNotificationRead' : ActorMethod<[NotificationId], undefined>,
+  'markUserNotificationRead' : ActorMethod<[UserNotificationId], undefined>,
   'register' : ActorMethod<
     [string, string, string, UserRole],
     { 'ok' : UserId } |
@@ -289,7 +360,25 @@ export interface _SERVICE {
   'rejectBooking' : ActorMethod<[BookingId], boolean>,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'setJobPreference' : ActorMethod<[string, JobPostingId, boolean], undefined>,
+  'setTwilioConfig' : ActorMethod<[string, string, string], undefined>,
   'setWorkerStatus' : ActorMethod<[bigint, WorkerStatus], boolean>,
+  'transformOtpResponse' : ActorMethod<
+    [TransformationInput],
+    TransformationOutput
+  >,
+  'updateJobVacancy' : ActorMethod<
+    [
+      JobVacancyId,
+      string,
+      string,
+      string,
+      [] | [string],
+      string,
+      string,
+      bigint,
+    ],
+    undefined
+  >,
   'updateNote' : ActorMethod<[NoteId, string, string], undefined>,
   'updateRentalStatus' : ActorMethod<
     [RentalPropertyId, RentalStatus],

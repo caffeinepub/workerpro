@@ -200,7 +200,10 @@ function AppLayout() {
           Nearby
         </button>
         <div className="flex items-center gap-1">
-          <NotificationBell onOpenCenter={() => navigate("notifications")} />
+          <NotificationBell
+            onOpenCenter={() => navigate("notifications")}
+            session={session}
+          />
         </div>
       </header>
 
@@ -222,8 +225,8 @@ function AppLayout() {
                 onNearby={() => navigate("nearby")}
               />
             )}
-            {page === "jobs" && <JobsPage />}
-            {page === "rentals" && <RentalsPage />}
+            {page === "jobs" && <JobsPage session={session} />}
+            {page === "rentals" && <RentalsPage session={session} />}
             {page === "bookings" && <BookingsPage session={session} />}
             {page === "profile" && (
               <ProfilePage
@@ -239,7 +242,9 @@ function AppLayout() {
             {page === "workers" && <WorkersPage />}
             {page === "dailywork" && <DailyWork />}
             {page === "reports" && <Reports />}
-            {page === "notifications" && <NotificationsPage />}
+            {page === "notifications" && (
+              <NotificationsPage session={session} />
+            )}
             {page === "adminworkers" && <AdminWorkersPage />}
             {page === "settings" && session && (
               <SettingsPage
