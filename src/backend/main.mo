@@ -71,6 +71,9 @@ actor {
   };
 
   let users = Map.empty<UserId, UserAccount>();
+  // Separate stable maps for user blocking and profile images
+  let userBlockedStatus = Map.empty<UserId, Bool>();
+  let userProfileImageUrls = Map.empty<UserId, Text>();
 
   // Public registration - no auth required
   public shared ({ caller }) func register(name : Text, emailOrPhone : Text, passwordHash : Text, role : UserRole) : async {
@@ -105,6 +108,10 @@ actor {
     for ((id, user) in users.entries()) {
       if (Text.equal(user.emailOrPhone, emailOrPhone)) {
         if (Text.equal(user.passwordHash, passwordHash)) {
+          let blocked = switch (userBlockedStatus.get(user.id)) {
+            case (?b) { b }; case (null) { false };
+          };
+          if (blocked) { return #err("Account is blocked. Contact admin.") };
           return #ok({ userId = user.id; role = user.role });
         } else {
           return #err("Invalid credentials");
@@ -153,28 +160,8 @@ actor {
       used = false;
     };
     otpRecords.add(phone, otpRecord);
-    // Send via Twilio if configured
-    if (twilioAccountSid != "" and twilioBase64Auth != "" and twilioFromPhone != "") {
-      try {
-        let url = "https://api.twilio.com/2010-04-01/Accounts/" # twilioAccountSid # "/Messages.json";
-        let msgBody = "Your WorkerPro login OTP is: " # paddedCode # ". Valid for 60 seconds. Do not share this code.";
-        let body = "From=" # urlEncode(twilioFromPhone) # "&To=" # urlEncode(phone) # "&Body=" # urlEncode(msgBody);
-        let headers : [Outcall.Header] = [
-          { name = "Content-Type"; value = "application/x-www-form-urlencoded" },
-          { name = "Authorization"; value = "Basic " # twilioBase64Auth },
-        ];
-        let response = await Outcall.httpPostRequest(url, headers, body, transformOtpResponse);
-        if (response.contains(#text "\"sid\":")) {
-          #ok("OTP sent via SMS")
-        } else {
-          #ok("OTP generated (SMS delivery issue — contact admin)")
-        }
-      } catch (_) {
-        #ok("OTP generated (SMS unavailable — contact admin)")
-      }
-    } else {
-      #ok("OTP generated (SMS not configured — contact admin)")
-    }
+    // TEST MODE: Return OTP directly (no SMS sent)
+    #ok(paddedCode)
   };
 
   // Public OTP login verify — verifies OTP and returns session
@@ -1096,6 +1083,8 @@ actor {
     postedAt : Time.Time;
     postedByUserId : Nat;
     contactPhone : ?Text;
+    imageUrl : Text;
+    approvalStatus : Text;
   };
 
   let jobVacancies = Map.empty<JobVacancyId, JobVacancy>();
@@ -1103,6 +1092,8 @@ actor {
   let jobVacancyOwners = Map.empty<JobVacancyId, Nat>();
   // Separate stable map for contact phone (adding new map is always upgrade-compatible)
   let jobVacancyContactPhones = Map.empty<JobVacancyId, Text>();
+  let jobVacancyImageUrls = Map.empty<JobVacancyId, Text>();
+  let jobVacancyApprovalStatus = Map.empty<JobVacancyId, Text>();
   var nextVacancyId = 0;
 
   // Helper: join a stored vacancy with its owner
@@ -1112,6 +1103,12 @@ actor {
       case (null) { 0 }; // legacy entries have no owner
     };
     let contactPhone = jobVacancyContactPhones.get(vacancy.id);
+    let imageUrl = switch (jobVacancyImageUrls.get(vacancy.id)) {
+      case (?url) { url }; case (null) { "" };
+    };
+    let approvalStatus = switch (jobVacancyApprovalStatus.get(vacancy.id)) {
+      case (?s) { s }; case (null) { "approved" }; // legacy = approved
+    };
     {
       id = vacancy.id;
       title = vacancy.title;
@@ -1124,10 +1121,12 @@ actor {
       postedAt = vacancy.postedAt;
       postedByUserId = ownerId;
       contactPhone;
+      imageUrl;
+      approvalStatus;
     };
   };
 
-  public shared ({ caller }) func createJobVacancy(title : Text, companyName : Text, category : Text, salary : ?Text, location : Text, description : Text, postedByUserId : Nat, contactPhone : ?Text) : async JobVacancyId {
+  public shared ({ caller }) func createJobVacancy(title : Text, companyName : Text, category : Text, salary : ?Text, location : Text, description : Text, postedByUserId : Nat, contactPhone : ?Text, imageUrl : ?Text) : async JobVacancyId {
     let id = nextVacancyId;
     let vacancy : JobVacancy = {
       id;
@@ -1146,13 +1145,24 @@ actor {
       case (?phone) { jobVacancyContactPhones.add(id, phone) };
       case (null) {};
     };
+    switch (imageUrl) {
+      case (?url) { jobVacancyImageUrls.add(id, url) };
+      case (null) {};
+    };
+    jobVacancyApprovalStatus.add(id, "approved");
     nextVacancyId += 1;
     id;
   };
 
   public query ({ caller }) func getOpenJobVacancies() : async [JobVacancyWithOwner] {
     jobVacancies.values().toArray().filter(
-      func(vacancy) { vacancy.status == #open }
+      func(vacancy) {
+        if (vacancy.status != #open) { return false };
+        let approval = switch (jobVacancyApprovalStatus.get(vacancy.id)) {
+          case (?s) { s }; case (null) { "approved" };
+        };
+        approval != "rejected"
+      }
     ).map(withOwner);
   };
 
@@ -1380,6 +1390,8 @@ actor {
 
   let rentals = Map.empty<RentalPropertyId, RentalProperty>();
   let rentalPropertyOwners = Map.empty<RentalPropertyId, Nat>();
+  let rentalImageUrls = Map.empty<RentalPropertyId, Text>();
+  let rentalApprovalStatus = Map.empty<RentalPropertyId, Text>();
   var nextRentalId = 0;
 
   type RentalWithOwner = {
@@ -1394,12 +1406,20 @@ actor {
     status : RentalStatus;
     createdAt : Time.Time;
     postedByUserId : Nat;
+    imageUrl : Text;
+    approvalStatus : Text;
   };
 
   func rentalWithOwner(rental : RentalProperty) : RentalWithOwner {
     let ownerId = switch (rentalPropertyOwners.get(rental.id)) {
       case (?id) { id };
       case (null) { 0 };
+    };
+    let imageUrl = switch (rentalImageUrls.get(rental.id)) {
+      case (?url) { url }; case (null) { "" };
+    };
+    let approvalStatus = switch (rentalApprovalStatus.get(rental.id)) {
+      case (?s) { s }; case (null) { "approved" };
     };
     {
       id = rental.id;
@@ -1413,10 +1433,12 @@ actor {
       status = rental.status;
       createdAt = rental.createdAt;
       postedByUserId = ownerId;
+      imageUrl;
+      approvalStatus;
     };
   };
 
-  public shared ({ caller }) func createRentalProperty(title : Text, description : Text, location : Text, pricePerMonth : Float, numberOfRooms : Nat, contactPhone : Text, ownerName : Text, postedByUserId : Nat) : async RentalPropertyId {
+  public shared ({ caller }) func createRentalProperty(title : Text, description : Text, location : Text, pricePerMonth : Float, numberOfRooms : Nat, contactPhone : Text, ownerName : Text, postedByUserId : Nat, imageUrl : ?Text) : async RentalPropertyId {
     let id = nextRentalId;
     let property : RentalProperty = {
       id;
@@ -1432,6 +1454,11 @@ actor {
     };
     rentals.add(id, property);
     rentalPropertyOwners.add(id, postedByUserId);
+    switch (imageUrl) {
+      case (?url) { rentalImageUrls.add(id, url) };
+      case (null) {};
+    };
+    rentalApprovalStatus.add(id, "approved");
     nextRentalId += 1;
     id;
   };
@@ -1440,7 +1467,11 @@ actor {
     // Public access - anyone can view available rentals
     rentals.values().toArray().filter(
       func(rental) {
-        rental.status == #available;
+        if (rental.status != #available) { return false };
+        let approval = switch (rentalApprovalStatus.get(rental.id)) {
+          case (?s) { s }; case (null) { "approved" };
+        };
+        approval != "rejected"
       }
     ).map(rentalWithOwner);
   };
@@ -1720,17 +1751,18 @@ actor {
     result;
   };
 
-  // Public - OTP generation: stores OTP and sends SMS via Twilio
-  // Returns true if OTP was generated (and sent if Twilio is configured)
-  // Returns false only on rate-limit or SMS send failure
-  public shared ({ caller }) func generateOtp(phone : Text) : async Bool {
+  // Public - OTP generation: TEST MODE — returns OTP directly in response (no SMS)
+  public shared ({ caller }) func generateOtp(phone : Text) : async {
+    #ok : Text;
+    #err : Text;
+  } {
     // Rate limiting: max 1 OTP request per 60 seconds per phone
     let now = Time.now();
     let sixtySecsNanos = 60 * 1_000_000_000;
     switch (otpRateLimit.get(phone)) {
       case (?lastTime) {
         if (now - lastTime < sixtySecsNanos) {
-          return false; // Too many requests
+          return #err("Please wait 60 seconds before requesting another OTP");
         };
       };
       case (null) {};
@@ -1751,29 +1783,8 @@ actor {
     };
     otpRecords.add(phone, otpRecord);
 
-    // Send via Twilio if configured
-    if (twilioAccountSid != "" and twilioBase64Auth != "" and twilioFromPhone != "") {
-      try {
-        let url = "https://api.twilio.com/2010-04-01/Accounts/" # twilioAccountSid # "/Messages.json";
-        let msgBody = "Your WorkerPro OTP is: " # paddedCode # ". Valid for 60 seconds. Do not share this code.";
-        let body = "From=" # urlEncode(twilioFromPhone) # "&To=" # urlEncode(phone) # "&Body=" # urlEncode(msgBody);
-        let headers : [Outcall.Header] = [
-          { name = "Content-Type"; value = "application/x-www-form-urlencoded" },
-          { name = "Authorization"; value = "Basic " # twilioBase64Auth },
-        ];
-        let response = await Outcall.httpPostRequest(url, headers, body, transformOtpResponse);
-        // Twilio success responses always contain a message SID ("sid":"SM...").
-        // Error responses (invalid number, trial restriction, auth failure) have no "sid" field.
-        // By checking for this field we correctly detect delivery failures.
-        response.contains(#text "\"sid\":");
-      } catch (_) {
-        // SMS failed but OTP is still stored — return false to signal SMS issue
-        false;
-      };
-    } else {
-      // Twilio not configured — cannot send SMS
-      false;
-    };
+    // TEST MODE: Return OTP directly in response (no SMS sent)
+    #ok(paddedCode);
   };
 
   // Public - OTP verification (60-second expiry, single-use)
@@ -1955,4 +1966,179 @@ actor {
       };
     };
   };
+  ///////////////////////////////
+  /// ADMIN DASHBOARD FEATURES ///
+  ///////////////////////////////
+
+  // Block/unblock user (admin only)
+  public shared ({ caller }) func blockUser(userId : UserId) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can block users");
+    };
+    userBlockedStatus.add(userId, true);
+  };
+
+  public shared ({ caller }) func unblockUser(userId : UserId) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can unblock users");
+    };
+    userBlockedStatus.add(userId, false);
+  };
+
+  public query ({ caller }) func isUserBlocked(userId : UserId) : async Bool {
+    switch (userBlockedStatus.get(userId)) {
+      case (?b) { b };
+      case (null) { false };
+    };
+  };
+
+  // Update user profile data (name + profile image URL)
+  public shared ({ caller }) func updateUserProfileData(userId : UserId, name : Text, profileImageUrl : Text) : async () {
+    switch (users.get(userId)) {
+      case (null) { Runtime.trap("User not found") };
+      case (?user) {
+        let updated : UserAccount = {
+          id = user.id;
+          name;
+          emailOrPhone = user.emailOrPhone;
+          passwordHash = user.passwordHash;
+          role = user.role;
+          createdAt = user.createdAt;
+        };
+        users.add(userId, updated);
+        if (profileImageUrl != "") {
+          userProfileImageUrls.add(userId, profileImageUrl);
+        };
+      };
+    };
+  };
+
+  public query ({ caller }) func getUserProfileData(userId : UserId) : async ?{ name : Text; profileImageUrl : Text; emailOrPhone : Text; role : UserRole } {
+    switch (users.get(userId)) {
+      case (null) { null };
+      case (?user) {
+        let profileImageUrl = switch (userProfileImageUrls.get(userId)) {
+          case (?url) { url }; case (null) { "" };
+        };
+        ?{ name = user.name; profileImageUrl; emailOrPhone = user.emailOrPhone; role = user.role };
+      };
+    };
+  };
+
+  // Get all users with blocked status (admin only)
+  public type UserWithStatus = {
+    id : UserId;
+    name : Text;
+    emailOrPhone : Text;
+    role : UserRole;
+    createdAt : Time.Time;
+    blocked : Bool;
+    profileImageUrl : Text;
+  };
+
+  public query ({ caller }) func getAllUsersWithStatus() : async [UserWithStatus] {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can view all users");
+    };
+    users.values().toArray().map(func(u : UserAccount) : UserWithStatus {
+      let blocked = switch (userBlockedStatus.get(u.id)) {
+        case (?b) { b }; case (null) { false };
+      };
+      let profileImageUrl = switch (userProfileImageUrls.get(u.id)) {
+        case (?url) { url }; case (null) { "" };
+      };
+      { id = u.id; name = u.name; emailOrPhone = u.emailOrPhone; role = u.role; createdAt = u.createdAt; blocked; profileImageUrl };
+    });
+  };
+
+  // Approve/reject job vacancies (admin only)
+  public shared ({ caller }) func approveJobVacancy(id : JobVacancyId) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can approve job vacancies");
+    };
+    jobVacancyApprovalStatus.add(id, "approved");
+  };
+
+  public shared ({ caller }) func rejectJobVacancy(id : JobVacancyId) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can reject job vacancies");
+    };
+    jobVacancyApprovalStatus.add(id, "rejected");
+  };
+
+  // Admin get all job vacancies (no filter)
+  public query ({ caller }) func adminGetAllJobVacancies() : async [JobVacancyWithOwner] {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can view all job vacancies");
+    };
+    jobVacancies.values().toArray().map(withOwner);
+  };
+
+  // Approve/reject rental properties (admin only)
+  public shared ({ caller }) func approveRentalProperty(id : RentalPropertyId) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can approve rental properties");
+    };
+    rentalApprovalStatus.add(id, "approved");
+  };
+
+  public shared ({ caller }) func rejectRentalProperty(id : RentalPropertyId) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can reject rental properties");
+    };
+    rentalApprovalStatus.add(id, "rejected");
+  };
+
+  // Admin get all rentals
+  public query ({ caller }) func adminGetAllRentals() : async [RentalWithOwner] {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can view all rentals");
+    };
+    rentals.values().toArray().map(rentalWithOwner);
+  };
+
+  // Update rental property (owner or admin)
+  public shared ({ caller }) func updateRentalProperty(id : RentalPropertyId, title : Text, description : Text, location : Text, pricePerMonth : Float, numberOfRooms : Nat, contactPhone : Text, ownerName : Text, requestingUserId : Nat) : async () {
+    switch (rentals.get(id)) {
+      case (null) { Runtime.trap("Rental property not found") };
+      case (?rental) {
+        let isAdmin = AccessControl.isAdmin(accessControlState, caller);
+        let ownerId = switch (rentalPropertyOwners.get(id)) {
+          case (?o) { o }; case (null) { 0 };
+        };
+        let isOwner = ownerId == requestingUserId and requestingUserId != 0;
+        if (not isAdmin and not isOwner) {
+          Runtime.trap("Unauthorized: Only the owner or admin can update this rental");
+        };
+        let updated : RentalProperty = {
+          id = rental.id;
+          title;
+          description;
+          location;
+          pricePerMonth;
+          numberOfRooms;
+          contactPhone;
+          ownerName;
+          status = rental.status;
+          createdAt = rental.createdAt;
+        };
+        rentals.add(id, updated);
+      };
+    };
+  };
+
+  // Stats queries (public)
+  public query ({ caller }) func getUserCount() : async Nat {
+    users.size();
+  };
+
+  public query ({ caller }) func getJobVacancyCount() : async Nat {
+    jobVacancies.size();
+  };
+
+  public query ({ caller }) func getRentalCount() : async Nat {
+    rentals.size();
+  };
+
+
 };

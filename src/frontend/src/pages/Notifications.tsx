@@ -27,13 +27,20 @@ function JobAppNotifCard({
   notification,
   index,
   userId,
+  onNavigateToJobs,
 }: {
   notification: JobApplicationNotif;
   index: number;
   userId?: bigint;
+  onNavigateToJobs?: () => void;
 }) {
   const markRead = useMarkJobAppNotifRead(userId);
   const deleteNotif = useDeleteJobAppNotif(userId);
+
+  const handleClick = () => {
+    if (!notification.isRead) markRead.mutate(notification.id);
+    if (onNavigateToJobs) onNavigateToJobs();
+  };
 
   return (
     <motion.div
@@ -41,11 +48,12 @@ function JobAppNotifCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
       data-ocid={`notifications.job_app.item.${index + 1}`}
-      className={`rounded-xl border p-4 flex gap-3 transition-colors ${
+      className={`rounded-xl border p-4 flex gap-3 transition-colors cursor-pointer hover:bg-muted/40 ${
         !notification.isRead
           ? "bg-primary/5 border-primary/20"
           : "bg-card border-border"
       }`}
+      onClick={handleClick}
     >
       <div className="text-2xl flex-shrink-0 mt-0.5">📋</div>
       <div className="flex-1 min-w-0">
@@ -58,7 +66,7 @@ function JobAppNotifCard({
                   : "text-muted-foreground"
               }`}
             >
-              New Job Application
+              New Application Received
             </span>
             {!notification.isRead && (
               <span className="w-2 h-2 rounded-full bg-primary inline-block" />
@@ -70,7 +78,10 @@ function JobAppNotifCard({
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7"
-                onClick={() => markRead.mutate(notification.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  markRead.mutate(notification.id);
+                }}
                 data-ocid={`notifications.job_app.mark_read.${index + 1}`}
                 title="Mark as read"
               >
@@ -81,7 +92,10 @@ function JobAppNotifCard({
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-destructive"
-              onClick={() => deleteNotif.mutate(notification.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                deleteNotif.mutate(notification.id);
+              }}
               data-ocid={`notifications.job_app.delete.${index + 1}`}
               title="Delete"
             >
@@ -95,7 +109,7 @@ function JobAppNotifCard({
           {String(notification.jobTitle)}
         </p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          {String(notification.message)}
+          Someone has applied for your job post.
         </p>
 
         {/* Applicant details */}
@@ -113,15 +127,23 @@ function JobAppNotifCard({
             <a
               href={`tel:${String(notification.applicantPhone)}`}
               className="font-medium text-primary underline"
+              onClick={(e) => e.stopPropagation()}
             >
               {String(notification.applicantPhone)}
             </a>
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground/60 mt-1.5">
-          {formatDateTime(notification.timestamp)}
-        </p>
+        <div className="flex items-center justify-between mt-1.5">
+          <p className="text-xs text-muted-foreground/60">
+            {formatDateTime(notification.timestamp)}
+          </p>
+          {onNavigateToJobs && (
+            <span className="text-xs text-primary font-medium">
+              Tap to view applicants →
+            </span>
+          )}
+        </div>
       </div>
     </motion.div>
   );
@@ -205,7 +227,8 @@ function SystemNotifCard({
 
 export default function NotificationsPage({
   session,
-}: { session?: UserSession | null }) {
+  onNavigateToJobs,
+}: { session?: UserSession | null; onNavigateToJobs?: () => void }) {
   const userId = session?.userId;
   const { data: sysNotifs = [], isLoading: sysLoading } =
     useGetNotificationsForUser(userId);
@@ -326,6 +349,7 @@ export default function NotificationsPage({
                 notification={n}
                 index={i}
                 userId={userId}
+                onNavigateToJobs={onNavigateToJobs}
               />
             ))
           )}
@@ -352,6 +376,7 @@ export default function NotificationsPage({
                   notification={n}
                   index={i}
                   userId={userId}
+                  onNavigateToJobs={onNavigateToJobs}
                 />
               ))}
               {sysNotifs
@@ -391,6 +416,7 @@ export default function NotificationsPage({
                   notification={n}
                   index={i}
                   userId={userId}
+                  onNavigateToJobs={onNavigateToJobs}
                 />
               ))}
               {sysNotifs.map((n, i) => (

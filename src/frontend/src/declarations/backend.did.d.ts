@@ -292,7 +292,7 @@ export interface _SERVICE {
   'deleteTask' : ActorMethod<[TaskId], undefined>,
   'deleteUserNotification' : ActorMethod<[UserNotificationId], undefined>,
   'deleteWorkEntry' : ActorMethod<[WorkEntryId], undefined>,
-  'generateOtp' : ActorMethod<[string], boolean>,
+  'generateOtp' : ActorMethod<[string], { 'ok': string } | { 'err': string }>,
   'getOtpForPhone' : ActorMethod<[string], string>,
   'getActiveWorkers' : ActorMethod<[], Array<WorkerProfile>>,
   'getAllJobPostings' : ActorMethod<[], Array<JobPosting>>,

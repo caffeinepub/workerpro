@@ -350,7 +350,7 @@ export interface backendInterface {
     deleteTask(taskId: TaskId): Promise<void>;
     deleteUserNotification(id: UserNotificationId): Promise<void>;
     deleteWorkEntry(entryId: WorkEntryId): Promise<void>;
-    generateOtp(phone: string): Promise<boolean>;
+    generateOtp(phone: string): Promise<{ ok: string } | { err: string }>;
     getOtpForPhone(phone: string): Promise<string>;
     getActiveWorkers(): Promise<Array<WorkerProfile>>;
     getAllJobPostings(): Promise<Array<JobPosting>>;
@@ -810,18 +810,18 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async generateOtp(arg0: string): Promise<boolean> {
+    async generateOtp(arg0: string): Promise<{ ok: string } | { err: string }> {
         if (this.processError) {
             try {
                 const result = await this.actor.generateOtp(arg0);
-                return result;
+                return result as any;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.generateOtp(arg0);
-            return result;
+            return result as any;
         }
     }
     async getOtpForPhone(arg0: string): Promise<string> {

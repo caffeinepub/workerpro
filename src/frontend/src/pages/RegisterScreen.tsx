@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
-  Info,
   Lock,
   MessageSquare,
   Phone,
@@ -50,6 +49,7 @@ export default function RegisterScreen({
   const [verifying, setVerifying] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [displayedOtp, setDisplayedOtp] = useState("");
 
   // Step 3
   const [name, setName] = useState("");
@@ -59,17 +59,6 @@ export default function RegisterScreen({
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [smsConfigured, setSmsConfigured] = useState<boolean | null>(null);
-
-  // Check if SMS (Twilio) is configured on mount
-  useEffect(() => {
-    if (actor) {
-      actor
-        .isSmsConfigured()
-        .then(setSmsConfigured)
-        .catch(() => setSmsConfigured(false));
-    }
-  }, [actor]);
 
   // Start or restart the 60-second countdown
   const startCountdown = () => {
@@ -105,23 +94,18 @@ export default function RegisterScreen({
     }
     setSendingOtp(true);
     try {
-      const success = await actor.generateOtp(p);
-      if (success) {
+      const result = (await actor.generateOtp(p)) as
+        | { ok: string }
+        | { err: string };
+      if ("ok" in result) {
+        const otpCode = result.ok;
+        setDisplayedOtp(otpCode);
+        setOtpInput(otpCode);
         setStep(2);
         startCountdown();
-        toast.success(`OTP sent to ${p} via SMS`);
-      } else if (smsConfigured === false) {
-        // SMS not configured but OTP is stored — admin can look it up
-        setStep(2);
-        startCountdown();
-        toast.info(
-          "OTP generated. Ask your admin to look up the code for you.",
-        );
+        toast.success("OTP generated for testing");
       } else {
-        // SMS is configured but delivery failed (e.g. unverified trial number)
-        toast.error(
-          `Failed to deliver OTP to ${p}. Check that the number is correct and in international format (+91XXXXXXXXXX). If using Twilio trial, the number must be verified in your Twilio console.`,
-        );
+        toast.error(result.err || "Failed to generate OTP");
       }
     } catch {
       toast.error(
@@ -137,19 +121,18 @@ export default function RegisterScreen({
     if (!actor) return;
     setSendingOtp(true);
     try {
-      const success = await actor.generateOtp(phone.trim());
-      if (success) {
+      const result = (await actor.generateOtp(phone.trim())) as
+        | { ok: string }
+        | { err: string };
+      if ("ok" in result) {
+        const otpCode = result.ok;
+        setDisplayedOtp(otpCode);
+        setOtpInput(otpCode);
         startCountdown();
-        setOtpInput("");
         setErrors({});
-        toast.success("New OTP sent to your phone!");
-      } else if (smsConfigured === false) {
-        startCountdown();
-        setOtpInput("");
-        setErrors({});
-        toast.info("New OTP generated. Ask admin to look it up.");
+        toast.success("OTP generated for testing");
       } else {
-        toast.error("Please wait 60 seconds before requesting another OTP.");
+        toast.error(result.err || "Failed to resend OTP");
       }
     } catch {
       toast.error("Failed to resend OTP.");
@@ -319,23 +302,6 @@ export default function RegisterScreen({
             animate={{ opacity: 1, x: 0 }}
             className="space-y-4"
           >
-            {smsConfigured === false && (
-              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
-                <div className="flex items-start gap-2">
-                  <Info className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-semibold text-amber-800">
-                      SMS not yet configured
-                    </p>
-                    <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
-                      Your OTP will be generated but not sent by SMS. Contact
-                      the app admin to look up your code in the Admin panel
-                      under Workers &rarr; SMS Configuration.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
             <div className="space-y-1.5">
               <Label className="text-sm font-medium">Phone Number</Label>
               <p className="text-xs text-muted-foreground">
@@ -370,7 +336,7 @@ export default function RegisterScreen({
               >
                 <MessageSquare className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                 <p className="text-xs text-primary">
-                  OTP will be sent to:{" "}
+                  OTP will be generated for:{" "}
                   <span className="font-semibold">{phone.trim()}</span>
                 </p>
               </motion.div>
@@ -382,7 +348,7 @@ export default function RegisterScreen({
               disabled={sendingOtp}
               className="w-full rounded-xl h-12 text-base font-semibold"
             >
-              {sendingOtp ? "Sending..." : "Send OTP"}
+              {sendingOtp ? "Generating..." : "Send OTP"}
             </Button>
             <p className="text-center text-sm text-muted-foreground">
               Already have an account?{" "}
@@ -405,34 +371,18 @@ export default function RegisterScreen({
             animate={{ opacity: 1, x: 0 }}
             className="space-y-4"
           >
-            {/* SMS sent notice */}
-            {smsConfigured ? (
-              <div className="rounded-xl bg-blue-50 border border-blue-200 p-4 text-center">
-                <MessageSquare className="w-8 h-8 text-blue-500 mx-auto mb-2" />
-                <p className="text-sm font-semibold text-blue-800">
-                  OTP sent via SMS
+            <p className="text-sm font-semibold text-foreground text-center">
+              Step 2: Verify OTP
+            </p>
+
+            {/* TEST MODE OTP display */}
+            {displayedOtp && (
+              <div className="bg-yellow-50 border-2 border-yellow-400 rounded-xl p-4 text-center my-3">
+                <p className="text-xs text-yellow-700 font-medium mb-1">
+                  TEST MODE — Your OTP
                 </p>
-                <p className="text-xs text-blue-700 mt-1">
-                  A 6-digit code was sent to
-                </p>
-                <p className="text-sm font-bold text-blue-900 mt-0.5">
-                  {phone}
-                </p>
-                <p className="text-xs text-blue-600 mt-1">
-                  Check your messages and enter the code below.
-                </p>
-              </div>
-            ) : (
-              <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-center">
-                <Info className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-                <p className="text-sm font-semibold text-amber-800">
-                  OTP generated (SMS unavailable)
-                </p>
-                <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-                  SMS is not configured. Ask your admin to open the Admin panel
-                  &rarr; Workers &rarr; OTP Lookup, enter{" "}
-                  <span className="font-bold">{phone}</span>, and share the code
-                  with you.
+                <p className="text-3xl font-bold tracking-[0.3em] text-yellow-800">
+                  {displayedOtp}
                 </p>
               </div>
             )}
@@ -487,6 +437,7 @@ export default function RegisterScreen({
                 onClick={() => {
                   setStep(1);
                   setOtpInput("");
+                  setDisplayedOtp("");
                   setErrors({});
                   if (timerRef.current) clearInterval(timerRef.current);
                   setCountdown(0);

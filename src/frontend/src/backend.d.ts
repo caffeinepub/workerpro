@@ -285,7 +285,7 @@ export interface backendInterface {
     markAllJobAppNotifsRead(userId: bigint): Promise<void>;
     deleteJobAppNotif(id: JobApplicationNotifId): Promise<void>;
     deleteWorkEntry(entryId: WorkEntryId): Promise<void>;
-    generateOtp(phone: string): Promise<boolean>;
+    generateOtp(phone: string): Promise<{ ok: string } | { err: string }>;
     getOtpForPhone(phone: string): Promise<string>;
     getActiveWorkers(): Promise<Array<WorkerProfile>>;
     getAllJobPostings(): Promise<Array<JobPosting>>;

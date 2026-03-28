@@ -19,6 +19,7 @@ import {
 } from "./hooks/useWorkerQueries";
 import { requestNotificationPermission } from "./lib/browserNotifications";
 import AddWorkPage from "./pages/AddWorkPage";
+import AdminDashboardPage from "./pages/AdminDashboardPage";
 import AdminWorkersPage from "./pages/AdminWorkersPage";
 import BookingsPage from "./pages/BookingsPage";
 import DailyWork from "./pages/DailyWork";
@@ -49,6 +50,7 @@ type DeepPage =
   | "addwork"
   | "messages"
   | "adminworkers"
+  | "admindashboard"
   | "settings"
   | "nearby";
 type Page = BottomTab | DeepPage;
@@ -68,6 +70,20 @@ const BOTTOM_TAB_IDS: BottomTab[] = [
   "rentals",
   "bookings",
   "profile",
+];
+
+const DEEP_PAGES: DeepPage[] = [
+  "jobboard",
+  "workers",
+  "dailywork",
+  "reports",
+  "notifications",
+  "addwork",
+  "messages",
+  "adminworkers",
+  "admindashboard",
+  "settings",
+  "nearby",
 ];
 
 function AppLayout() {
@@ -101,6 +117,8 @@ function AppLayout() {
   const activeTab: BottomTab = BOTTOM_TAB_IDS.includes(page as BottomTab)
     ? (page as BottomTab)
     : "home";
+
+  const isDeepPage = DEEP_PAGES.includes(page as DeepPage);
 
   const handleBookWorker = (skill: string) => {
     setPrefillCategory(skill);
@@ -180,32 +198,37 @@ function AppLayout() {
 
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden max-w-lg mx-auto relative">
-      {/* Top Header */}
-      <header className="flex items-center justify-between px-5 py-3.5 bg-card border-b border-border z-10 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
-            <Zap className="w-4 h-4 text-primary" />
+      {/* Top Header - hide on deep pages that have own header */}
+      {page !== "admindashboard" && (
+        <header className="flex items-center justify-between px-5 py-3.5 bg-card border-b border-border z-10 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Zap className="w-4 h-4 text-primary" />
+            </div>
+            <span className="font-display font-bold text-foreground text-base">
+              Worker Pro
+            </span>
           </div>
-          <span className="font-display font-bold text-foreground text-base">
-            Worker Pro
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => navigate("nearby")}
-          className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium hover:bg-primary/10 hover:text-primary transition-colors"
-          data-ocid="header.nearby.button"
-        >
-          <MapPin className="w-3 h-3" />
-          Nearby
-        </button>
-        <div className="flex items-center gap-1">
-          <NotificationBell
-            onOpenCenter={() => navigate("notifications")}
-            session={session}
-          />
-        </div>
-      </header>
+          <button
+            type="button"
+            onClick={() => navigate("nearby")}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium hover:bg-primary/10 hover:text-primary transition-colors"
+            data-ocid="header.nearby.button"
+          >
+            <MapPin className="w-3 h-3" />
+            Nearby
+          </button>
+          <div className="flex items-center gap-1">
+            <NotificationBell
+              onOpenCenter={() => navigate("notifications")}
+              onNavigateToJobs={() => {
+                navigate("notifications");
+              }}
+              session={session}
+            />
+          </div>
+        </header>
+      )}
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
@@ -243,9 +266,18 @@ function AppLayout() {
             {page === "dailywork" && <DailyWork />}
             {page === "reports" && <Reports />}
             {page === "notifications" && (
-              <NotificationsPage session={session} />
+              <NotificationsPage
+                session={session}
+                onNavigateToJobs={() => navigate("jobs")}
+              />
             )}
             {page === "adminworkers" && <AdminWorkersPage />}
+            {page === "admindashboard" && (
+              <AdminDashboardPage
+                session={session}
+                onBack={() => navigate("profile")}
+              />
+            )}
             {page === "settings" && session && (
               <SettingsPage
                 session={session}
@@ -260,34 +292,36 @@ function AppLayout() {
         </AnimatePresence>
       </main>
 
-      {/* Bottom Navigation */}
-      <nav
-        className="flex-shrink-0 flex items-center justify-around bg-card border-t border-border px-2"
-        style={{ height: "64px" }}
-        data-ocid="nav.bottom_nav.panel"
-      >
-        {BOTTOM_TABS.map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              data-ocid={`nav.${tab.id}.link`}
-              onClick={() => navigate(tab.id)}
-              className={`flex flex-col items-center justify-center gap-0.5 px-3 py-2 rounded-xl transition-all ${isActive ? "bottom-nav-active" : "bottom-nav-inactive"}`}
-            >
-              <tab.icon
-                className={`w-5 h-5 transition-transform ${isActive ? "scale-110" : ""}`}
-              />
-              <span
-                className={`text-[10px] font-medium ${isActive ? "text-primary" : "text-muted-foreground"}`}
+      {/* Bottom Navigation - hide on deep pages */}
+      {!isDeepPage && (
+        <nav
+          className="flex-shrink-0 flex items-center justify-around bg-card border-t border-border px-2"
+          style={{ height: "64px" }}
+          data-ocid="nav.bottom_nav.panel"
+        >
+          {BOTTOM_TABS.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                data-ocid={`nav.${tab.id}.link`}
+                onClick={() => navigate(tab.id)}
+                className={`flex flex-col items-center justify-center gap-0.5 px-3 py-2 rounded-xl transition-all ${isActive ? "bottom-nav-active" : "bottom-nav-inactive"}`}
               >
-                {tab.label}
-              </span>
-            </button>
-          );
-        })}
-      </nav>
+                <tab.icon
+                  className={`w-5 h-5 transition-transform ${isActive ? "scale-110" : ""}`}
+                />
+                <span
+                  className={`text-[10px] font-medium ${isActive ? "text-primary" : "text-muted-foreground"}`}
+                >
+                  {tab.label}
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
       <Toaster richColors position="top-center" />
     </div>

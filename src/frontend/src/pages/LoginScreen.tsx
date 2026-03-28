@@ -67,6 +67,7 @@ export default function LoginScreen({
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const [displayedLoginOtp, setDisplayedLoginOtp] = useState("");
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Cleanup countdown on unmount
@@ -97,6 +98,7 @@ export default function LoginScreen({
     setOtpPhoneError("");
     setOtpCodeError("");
     setCountdown(0);
+    setDisplayedLoginOtp("");
     if (countdownRef.current) clearInterval(countdownRef.current);
   };
 
@@ -196,7 +198,10 @@ export default function LoginScreen({
         | { __kind__: "ok"; ok: string }
         | { __kind__: "err"; err: string };
       if (result.__kind__ === "ok") {
-        toast.success(result.ok || "OTP sent via SMS");
+        const otpCode = result.ok;
+        setDisplayedLoginOtp(otpCode);
+        setOtpCode(otpCode);
+        toast.success("OTP generated for testing");
         setOtpStep(2);
         startCountdown();
       } else {
@@ -213,6 +218,7 @@ export default function LoginScreen({
     if (countdown > 0) return;
     setOtpCode("");
     setOtpCodeError("");
+    setDisplayedLoginOtp("");
     await handleSendOtp();
   };
 
@@ -534,18 +540,21 @@ export default function LoginScreen({
                       exit={{ opacity: 0 }}
                       className="space-y-4"
                     >
-                      {/* Info banner */}
-                      <div className="bg-primary/8 border border-primary/20 rounded-xl px-4 py-3">
-                        <p className="text-xs text-primary font-medium">
-                          OTP sent via SMS to
-                        </p>
-                        <p className="text-sm font-semibold text-foreground mt-0.5">
-                          {otpPhone}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Check your messages and enter the 6-digit code below.
-                        </p>
-                      </div>
+                      <p className="text-sm font-semibold text-foreground text-center">
+                        Step 2: Verify OTP
+                      </p>
+
+                      {/* TEST MODE OTP display */}
+                      {displayedLoginOtp && (
+                        <div className="bg-yellow-50 border-2 border-yellow-400 rounded-xl p-4 text-center my-3">
+                          <p className="text-xs text-yellow-700 font-medium mb-1">
+                            TEST MODE — Your OTP
+                          </p>
+                          <p className="text-3xl font-bold tracking-[0.3em] text-yellow-800">
+                            {displayedLoginOtp}
+                          </p>
+                        </div>
+                      )}
 
                       <div className="space-y-1.5">
                         <Label htmlFor="otp-code">Enter OTP</Label>
@@ -609,6 +618,7 @@ export default function LoginScreen({
                             setOtpCode("");
                             setOtpCodeError("");
                             setCountdown(0);
+                            setDisplayedLoginOtp("");
                             if (countdownRef.current)
                               clearInterval(countdownRef.current);
                           }}

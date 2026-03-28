@@ -35,14 +35,16 @@ import {
   DollarSign,
   Edit,
   Eye,
+  ImagePlus,
   Loader2,
   MapPin,
   Phone,
   Search,
   Trash2,
+  X,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useCreateUserNotification } from "../hooks/useUserNotificationQueries";
 import type { JobVacancy } from "../hooks/useVacancyQueries";
@@ -55,8 +57,10 @@ import {
   useUpdateJobVacancy,
 } from "../hooks/useVacancyQueries";
 import type { UserSession } from "../hooks/useWorkerQueries";
+import { uploadImageFile } from "../utils/imageUpload";
 
 const CATEGORY_OPTIONS = [
+  "All",
   "Painter",
   "Cleaner",
   "Plumber",
@@ -153,6 +157,13 @@ function DetailsModal({
         <DialogHeader>
           <DialogTitle>{vacancy.title}</DialogTitle>
         </DialogHeader>
+        {(vacancy as any).imageUrl && (
+          <img
+            src={(vacancy as any).imageUrl}
+            alt={vacancy.title}
+            className="w-full h-40 object-cover rounded-xl"
+          />
+        )}
         <div className="space-y-3 pt-1 text-sm">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Building2 className="w-4 h-4 flex-shrink-0" />
@@ -284,7 +295,6 @@ function EditVacancyModal({
     setDescription(v?.description ?? "");
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: effect needed for modal reset
   if (open && vacancy && title === "" && vacancy.title !== "") {
     handleOpen(vacancy);
   }
@@ -359,7 +369,7 @@ function EditVacancyModal({
                 <SelectValue placeholder="Select category" />
               </SelectTrigger>
               <SelectContent>
-                {CATEGORY_OPTIONS.map((c) => (
+                {CATEGORY_OPTIONS.filter((c) => c !== "All").map((c) => (
                   <SelectItem key={c} value={c}>
                     {c}
                   </SelectItem>
@@ -467,11 +477,10 @@ function ApplyModal({
             receiverUserId: vacancy.postedByUserId,
             senderUserId: applicantUserId,
             jobId: vacancy.id,
-            title: "New Job Application",
+            title: "New Application Received",
             message: `${name.trim()} applied to your job: ${vacancy.title}`,
           });
         } catch (_notifErr) {
-          // Notification failure should not block the user
           console.error("Failed to send notification", _notifErr);
         }
       }
@@ -545,6 +554,7 @@ function JobVacancyCard({
   onViewDetails,
   onContact,
   hasApplied,
+  index,
 }: {
   vacancy: JobVacancy;
   onApply: (v: JobVacancy) => void;
@@ -554,6 +564,7 @@ function JobVacancyCard({
   onViewDetails?: (v: JobVacancy) => void;
   onContact?: (v: JobVacancy) => void;
   hasApplied?: boolean;
+  index: number;
 }) {
   const catColor =
     CATEGORY_COLORS[vacancy.category] ?? "bg-gray-100 text-gray-700";
@@ -561,76 +572,80 @@ function JobVacancyCard({
     currentUserId !== undefined &&
     currentUserId === vacancy.postedByUserId &&
     currentUserId !== BigInt(0);
+  const imageUrl = (vacancy as any).imageUrl as string | undefined;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="worker-card p-4 flex flex-col gap-3"
+      className="worker-card overflow-hidden"
+      data-ocid={`jobs.item.${index + 1}`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="font-display font-semibold text-sm text-foreground leading-tight">
-              {vacancy.title}
-            </h3>
-            {isOwner && (
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200 flex-shrink-0">
-                Your Post
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-            <Building2 className="w-3 h-3" />
-            <span>{vacancy.companyName}</span>
-          </div>
-        </div>
-        <Badge
-          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border-0 flex-shrink-0 ${catColor}`}
-        >
-          {vacancy.category}
-        </Badge>
-      </div>
-
-      <div className="flex flex-col gap-1">
-        {vacancy.salary && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <DollarSign className="w-3 h-3 text-green-500" />
-            <span className="font-medium text-green-600">{vacancy.salary}</span>
-          </div>
-        )}
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <MapPin className="w-3 h-3" />
-          <span>{vacancy.location}</span>
-        </div>
-      </div>
-
-      {vacancy.description && (
-        <p className="text-xs text-muted-foreground line-clamp-2">
-          {vacancy.description}
-        </p>
+      {/* Post image if available */}
+      {imageUrl && (
+        <img
+          src={imageUrl}
+          alt={vacancy.title}
+          className="w-full h-36 object-cover"
+        />
       )}
-
-      {isOwner ? (
-        // Owner view: View Details + Edit/Delete
-        <div className="flex flex-col gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            data-ocid={`jobs.view_details.button.${Number(vacancy.id)}`}
-            onClick={() => onViewDetails?.(vacancy)}
-            className="w-full rounded-full text-xs font-semibold"
+      <div className="p-4 flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="font-display font-semibold text-sm text-foreground leading-tight">
+                {vacancy.title}
+              </h3>
+              {isOwner && (
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200 flex-shrink-0">
+                  Your Post
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+              <Building2 className="w-3 h-3" />
+              <span>{vacancy.companyName}</span>
+            </div>
+          </div>
+          <Badge
+            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border-0 flex-shrink-0 ${catColor}`}
           >
-            <Eye className="w-3 h-3 mr-1" />
-            View Details
-          </Button>
+            {vacancy.category}
+          </Badge>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          {vacancy.salary && (
+            <div className="flex items-center gap-1 text-xs text-green-600 font-semibold">
+              <DollarSign className="w-3 h-3" />
+              <span>{vacancy.salary}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <MapPin className="w-3 h-3" />
+            <span>{vacancy.location}</span>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        {isOwner ? (
           <div className="flex gap-2">
             <Button
               size="sm"
               variant="outline"
-              data-ocid={`jobs.edit.button.${Number(vacancy.id)}`}
+              className="flex-1 rounded-full text-xs"
+              data-ocid={`jobs.view_details.button.${index + 1}`}
+              onClick={() => onViewDetails?.(vacancy)}
+            >
+              <Eye className="w-3 h-3 mr-1" />
+              View
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 rounded-full text-xs"
+              data-ocid={`jobs.edit_button.${index + 1}`}
               onClick={() => onEdit?.(vacancy)}
-              className="flex-1 rounded-full text-xs font-semibold"
             >
               <Edit className="w-3 h-3 mr-1" />
               Edit
@@ -638,55 +653,118 @@ function JobVacancyCard({
             <Button
               size="sm"
               variant="destructive"
-              data-ocid={`jobs.delete_button.${Number(vacancy.id)}`}
+              className="flex-1 rounded-full text-xs"
+              data-ocid={`jobs.delete_button.${index + 1}`}
               onClick={() => onDelete?.(vacancy)}
-              className="flex-1 rounded-full text-xs font-semibold"
             >
               <Trash2 className="w-3 h-3 mr-1" />
               Delete
             </Button>
           </div>
+        ) : (
+          <div className="flex gap-2">
+            {hasApplied ? (
+              <div className="flex-1 flex items-center justify-center px-3 py-1.5 rounded-full bg-green-50 text-green-700 text-xs font-semibold border border-green-200">
+                Applied ✓
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                className="flex-1 rounded-full text-xs"
+                data-ocid={`jobs.apply_button.${index + 1}`}
+                onClick={() => onApply(vacancy)}
+              >
+                Apply Now
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 rounded-full text-xs"
+              data-ocid={`jobs.view_details.button.${index + 1}`}
+              onClick={() => onViewDetails?.(vacancy)}
+            >
+              <Eye className="w-3 h-3 mr-1" />
+              View
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-full text-xs px-2.5"
+              data-ocid={`jobs.contact_button.${index + 1}`}
+              onClick={() => onContact?.(vacancy)}
+            >
+              <Phone className="w-3 h-3" />
+            </Button>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Image Upload Field ────────────────────────────────────────────────────
+
+function ImageUploadField({
+  imageUrl,
+  uploading,
+  onSelect,
+  onClear,
+}: {
+  imageUrl: string;
+  uploading: boolean;
+  onSelect: (file: File) => void;
+  onClear: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <div className="space-y-1.5">
+      <Label>Post Image (optional)</Label>
+      {imageUrl ? (
+        <div className="relative">
+          <img
+            src={imageUrl}
+            alt="Post preview"
+            className="w-full h-32 object-cover rounded-xl"
+          />
+          <button
+            type="button"
+            onClick={onClear}
+            className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70"
+          >
+            <X className="w-3 h-3" />
+          </button>
         </div>
       ) : (
-        // Other users view: Apply Now + View Details + Contact
-        <div className="flex flex-col gap-2">
-          {hasApplied && (
-            <span className="self-start text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
-              ✓ Applied
-            </span>
+        <button
+          type="button"
+          data-ocid="jobs.image.upload_button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="w-full h-24 border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center gap-2 text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors"
+        >
+          {uploading ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <ImagePlus className="w-5 h-5" />
           )}
-          <Button
-            size="sm"
-            data-ocid={`jobs.apply_now.button.${Number(vacancy.id)}`}
-            onClick={() => !hasApplied && onApply(vacancy)}
-            disabled={hasApplied}
-            className="w-full rounded-full text-xs font-semibold"
-          >
-            {hasApplied ? "Already Applied" : "Apply Now"}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            data-ocid={`jobs.view_details.button.${Number(vacancy.id)}`}
-            onClick={() => onViewDetails?.(vacancy)}
-            className="w-full rounded-full text-xs font-semibold"
-          >
-            <Eye className="w-3 h-3 mr-1" />
-            View Details
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            data-ocid={`jobs.contact.button.${Number(vacancy.id)}`}
-            onClick={() => onContact?.(vacancy)}
-            className="w-full rounded-full text-xs font-semibold"
-          >
-            <Phone className="w-3 h-3 mr-1" />
-            Contact
-          </Button>
-        </div>
+          <span className="text-xs">
+            {uploading ? "Uploading..." : "Tap to add image"}
+          </span>
+        </button>
       )}
-    </motion.div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onSelect(file);
+          e.target.value = "";
+        }}
+      />
+    </div>
   );
 }
 
@@ -696,15 +774,19 @@ function BrowseJobsTab({ session }: { session: UserSession | null }) {
   const { data: vacancies, isLoading } = useGetOpenJobVacancies();
   const { data: userApplications } = useGetUserApplications(session?.userId);
   const deleteMutation = useDeleteJobVacancy();
+
   const [search, setSearch] = useState("");
-  const [filterCategory, setFilterCategory] = useState("all");
-  const [applyTarget, setApplyTarget] = useState<JobVacancy | null>(null);
-  const [editTarget, setEditTarget] = useState<JobVacancy | null>(null);
-  const [detailTarget, setDetailTarget] = useState<JobVacancy | null>(null);
-  const [contactTarget, setContactTarget] = useState<JobVacancy | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [detailVacancy, setDetailVacancy] = useState<JobVacancy | null>(null);
+  const [applyVacancy, setApplyVacancy] = useState<JobVacancy | null>(null);
+  const [contactVacancy, setContactVacancy] = useState<JobVacancy | null>(null);
+  const [editVacancy, setEditVacancy] = useState<JobVacancy | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<JobVacancy | null>(null);
 
   const currentUserId = session?.userId;
+  const appliedJobIds = new Set(
+    (userApplications ?? []).map((a) => String(a.vacancyId)),
+  );
 
   const displayVacancies =
     vacancies && vacancies.length > 0 ? vacancies : SAMPLE_VACANCIES;
@@ -713,30 +795,21 @@ function BrowseJobsTab({ session }: { session: UserSession | null }) {
     const matchesSearch =
       !search ||
       v.title.toLowerCase().includes(search.toLowerCase()) ||
-      v.location.toLowerCase().includes(search.toLowerCase()) ||
-      v.companyName.toLowerCase().includes(search.toLowerCase());
-    const matchesCat =
-      filterCategory === "all" ||
-      v.category.toLowerCase() === filterCategory.toLowerCase();
-    return matchesSearch && matchesCat;
+      v.companyName.toLowerCase().includes(search.toLowerCase()) ||
+      v.location.toLowerCase().includes(search.toLowerCase());
+    const matchesCategory =
+      categoryFilter === "All" || v.category === categoryFilter;
+    return matchesSearch && matchesCategory;
   });
 
-  const appliedVacancyIds = new Set(
-    (userApplications ?? []).map((a) => String(a.vacancyId)),
-  );
-
-  const handleDelete = (v: JobVacancy) => {
-    setDeleteTarget(v);
-  };
-
   const handleConfirmDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !currentUserId) return;
     try {
       await deleteMutation.mutateAsync({
         id: deleteTarget.id,
-        requestingUserId: currentUserId ?? BigInt(0),
+        requestingUserId: currentUserId,
       });
-      toast.success("Job vacancy deleted.");
+      toast.success("Job deleted.");
       setDeleteTarget(null);
     } catch (err) {
       console.error("Failed to delete:", err);
@@ -753,43 +826,39 @@ function BrowseJobsTab({ session }: { session: UserSession | null }) {
         <input
           data-ocid="jobs.search_input"
           type="text"
-          placeholder="Search jobs, companies, locations…"
+          placeholder="Search by title, company, location…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-10 pr-4 py-2.5 rounded-full bg-muted border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground"
         />
       </div>
 
-      {/* Category filter */}
-      <div
-        className="flex gap-2 overflow-x-auto pb-1"
-        style={{ scrollbarWidth: "none" }}
-      >
-        {["all", ...CATEGORY_OPTIONS].map((cat) => (
+      {/* Category Filter Chips */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        {CATEGORY_OPTIONS.map((cat) => (
           <button
             key={cat}
             type="button"
-            data-ocid={`jobs.${cat.toLowerCase()}.tab`}
-            onClick={() => setFilterCategory(cat)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-              filterCategory === cat
-                ? "bg-primary text-white shadow-sm"
-                : "bg-muted text-muted-foreground hover:bg-secondary"
+            data-ocid={`jobs.filter_${cat.toLowerCase()}.tab`}
+            onClick={() => setCategoryFilter(cat)}
+            className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              categoryFilter === cat
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:bg-primary/10"
             }`}
           >
-            {cat === "all" ? "All" : cat}
+            {cat}
           </button>
         ))}
       </div>
 
-      {/* Vacancy list */}
       {isLoading ? (
         <div className="space-y-3" data-ocid="jobs.loading_state">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="worker-card p-4 space-y-3">
+          {[1, 2].map((i) => (
+            <div key={i} className="worker-card p-4 space-y-2">
               <Skeleton className="h-4 w-3/4" />
               <Skeleton className="h-3 w-1/2" />
-              <Skeleton className="h-9 w-full rounded-full" />
+              <Skeleton className="h-8 w-full rounded-full" />
             </div>
           ))}
         </div>
@@ -803,42 +872,54 @@ function BrowseJobsTab({ session }: { session: UserSession | null }) {
           <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-3">
             <Briefcase className="w-7 h-7 text-muted-foreground" />
           </div>
-          <p className="font-semibold text-foreground">No job vacancies yet</p>
+          <p className="font-semibold text-foreground">No jobs found</p>
           <p className="text-sm text-muted-foreground mt-1">
-            Check back soon or post a new vacancy
+            Try adjusting your search or filters
           </p>
         </motion.div>
       ) : (
         <div className="space-y-3">
           {filtered.map((v, i) => (
-            <motion.div
+            <JobVacancyCard
               key={String(v.id)}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              data-ocid={`jobs.item.${i + 1}`}
-            >
-              <JobVacancyCard
-                vacancy={v}
-                onApply={setApplyTarget}
-                currentUserId={currentUserId}
-                onDelete={handleDelete}
-                onEdit={setEditTarget}
-                onViewDetails={setDetailTarget}
-                onContact={setContactTarget}
-                hasApplied={appliedVacancyIds.has(String(v.id))}
-              />
-            </motion.div>
+              vacancy={v}
+              index={i}
+              currentUserId={currentUserId}
+              hasApplied={appliedJobIds.has(String(v.id))}
+              onApply={setApplyVacancy}
+              onViewDetails={setDetailVacancy}
+              onContact={setContactVacancy}
+              onEdit={setEditVacancy}
+              onDelete={setDeleteTarget}
+            />
           ))}
         </div>
       )}
 
+      <DetailsModal
+        vacancy={detailVacancy}
+        open={!!detailVacancy}
+        onClose={() => setDetailVacancy(null)}
+      />
       <ApplyModal
-        vacancy={applyTarget}
-        open={!!applyTarget}
-        onClose={() => setApplyTarget(null)}
+        vacancy={applyVacancy}
+        open={!!applyVacancy}
+        onClose={() => setApplyVacancy(null)}
         session={session}
       />
+      <ContactModal
+        vacancy={contactVacancy}
+        open={!!contactVacancy}
+        onClose={() => setContactVacancy(null)}
+      />
+      {editVacancy && currentUserId && (
+        <EditVacancyModal
+          vacancy={editVacancy}
+          open={!!editVacancy}
+          onClose={() => setEditVacancy(null)}
+          requestingUserId={currentUserId}
+        />
+      )}
 
       <AlertDialog
         open={!!deleteTarget}
@@ -848,7 +929,7 @@ function BrowseJobsTab({ session }: { session: UserSession | null }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Job Post?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteTarget?.title ?? ""}"\?
+              Are you sure you want to delete "{deleteTarget?.title ?? ""}"?
               This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -866,25 +947,6 @@ function BrowseJobsTab({ session }: { session: UserSession | null }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <EditVacancyModal
-        vacancy={editTarget}
-        open={!!editTarget}
-        onClose={() => setEditTarget(null)}
-        requestingUserId={currentUserId ?? BigInt(0)}
-      />
-
-      <DetailsModal
-        vacancy={detailTarget}
-        open={!!detailTarget}
-        onClose={() => setDetailTarget(null)}
-      />
-
-      <ContactModal
-        vacancy={contactTarget}
-        open={!!contactTarget}
-        onClose={() => setContactTarget(null)}
-      />
     </div>
   );
 }
@@ -899,7 +961,22 @@ function PostJobTab({ session }: { session: UserSession | null }) {
   const [salary, setSalary] = useState("");
   const [description, setDescription] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [uploadingImage, setUploadingImage] = useState(false);
   const createMutation = useCreateJobVacancy();
+
+  const handleImageSelect = async (file: File) => {
+    setUploadingImage(true);
+    try {
+      const url = await uploadImageFile(file);
+      setImageUrl(url);
+    } catch (err) {
+      console.error("Image upload failed:", err);
+      toast.error("Failed to upload image");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!title.trim() || !company.trim() || !category || !location.trim()) {
@@ -925,18 +1002,25 @@ function PostJobTab({ session }: { session: UserSession | null }) {
       setSalary("");
       setDescription("");
       setContactPhone("");
+      setImageUrl("");
     } catch (err) {
       console.error("Failed to post job vacancy:", err);
       toast.error(
         err instanceof Error
           ? err.message
-          : "Failed to post job vacancy. Please try again.",
+          : "Failed to post. Please try again.",
       );
     }
   };
 
   return (
     <div className="space-y-4">
+      <ImageUploadField
+        imageUrl={imageUrl}
+        uploading={uploadingImage}
+        onSelect={handleImageSelect}
+        onClear={() => setImageUrl("")}
+      />
       <div className="space-y-1.5">
         <Label htmlFor="job-title">Job Title *</Label>
         <Input
@@ -952,7 +1036,7 @@ function PostJobTab({ session }: { session: UserSession | null }) {
         <Input
           id="job-company"
           data-ocid="jobs.post_company.input"
-          placeholder="e.g. ABC Services Pvt. Ltd."
+          placeholder="e.g. ABC Services"
           value={company}
           onChange={(e) => setCompany(e.target.value)}
         />
@@ -961,10 +1045,10 @@ function PostJobTab({ session }: { session: UserSession | null }) {
         <Label>Category *</Label>
         <Select value={category} onValueChange={setCategory}>
           <SelectTrigger data-ocid="jobs.post_category.select">
-            <SelectValue placeholder="Select category" />
+            <SelectValue placeholder="Select a category" />
           </SelectTrigger>
           <SelectContent>
-            {CATEGORY_OPTIONS.map((c) => (
+            {CATEGORY_OPTIONS.filter((c) => c !== "All").map((c) => (
               <SelectItem key={c} value={c}>
                 {c}
               </SelectItem>
@@ -987,16 +1071,16 @@ function PostJobTab({ session }: { session: UserSession | null }) {
         <Input
           id="job-salary"
           data-ocid="jobs.post_salary.input"
-          placeholder="e.g. ₹20,000–₹30,000/mo"
+          placeholder="e.g. ₹20,000/mo"
           value={salary}
           onChange={(e) => setSalary(e.target.value)}
         />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="job-contact-phone">Contact Phone (optional)</Label>
+        <Label htmlFor="job-phone">Contact Phone (optional)</Label>
         <Input
-          id="job-contact-phone"
-          data-ocid="jobs.post_contact_phone.input"
+          id="job-phone"
+          data-ocid="jobs.post_phone.input"
           placeholder="e.g. +91 98765 43210"
           type="tel"
           value={contactPhone}
@@ -1008,17 +1092,17 @@ function PostJobTab({ session }: { session: UserSession | null }) {
         <Textarea
           id="job-description"
           data-ocid="jobs.post_description.textarea"
-          placeholder="Describe the job requirements and responsibilities…"
+          placeholder="Describe the role, requirements, and responsibilities…"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          rows={3}
+          rows={4}
         />
       </div>
       <Button
         data-ocid="jobs.post_submit.button"
         className="w-full rounded-full"
         onClick={handleSubmit}
-        disabled={createMutation.isPending}
+        disabled={createMutation.isPending || uploadingImage}
       >
         {createMutation.isPending ? (
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1029,7 +1113,7 @@ function PostJobTab({ session }: { session: UserSession | null }) {
   );
 }
 
-// ── Jobs Page ─────────────────────────────────────────────────────────────
+// ── Main Page ─────────────────────────────────────────────────────────────
 
 export default function JobsPage({ session }: { session: UserSession | null }) {
   return (
@@ -1045,7 +1129,7 @@ export default function JobsPage({ session }: { session: UserSession | null }) {
           </h1>
         </div>
         <p className="text-sm text-muted-foreground">
-          Browse open positions or post a new vacancy
+          Find work or post a vacancy
         </p>
       </div>
 

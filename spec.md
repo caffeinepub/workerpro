@@ -1,34 +1,65 @@
 # WorkerPro
 
 ## Current State
-WorkerPro has a functional authentication system:
-- OTP-based signup (phone → Twilio SMS → verify → account details)
-- Password-based login only
-- Role-based access (user / worker / admin)
-- 7-day session stored in localStorage
-- Admin hidden behind 5-tap logo gesture
-- Twilio SMS configured via Admin panel
+
+WorkerPro is a mobile-first PWA with:
+- User auth: register, login (password + OTP test mode), role-based (user/worker/admin)
+- Job Vacancies: create, list, apply, delete (owner only), edit (owner only), notifications on apply
+- Rental Properties: create, list, delete (owner only)
+- Notifications: user-scoped in-app notifications with bell badge
+- Profile page: shows initials avatar, menu nav to sub-pages
+- Admin: hidden login, AdminWorkersPage (manage worker status, Twilio/OTP config)
+- Bottom nav: Home, Jobs, Rentals, Bookings, Profile
+- Blob-storage NOT yet selected
 
 ## Requested Changes (Diff)
 
 ### Add
-- `loginWithOtp` backend function: sends OTP to phone, verifies, returns user session
-- OTP login option in LoginScreen (toggle between Password login and OTP login)
-- 2-step OTP login flow: enter phone → receive OTP via SMS → enter OTP → logged in
-- Clear error messages: `OTP failed`, `Invalid OTP`, `User not found`, `User already exists`, `Too many requests`
+- Profile image upload (avatar) on ProfilePage using blob-storage URLs
+- Image upload for job posts and rental posts (stored via blob-storage)
+- Search bar + category/location filters on JobsPage
+- Search bar + location/price filters on RentalsPage
+- Full Admin Dashboard page (separate from AdminWorkersPage) with:
+  - Stats cards: total users, total job posts, total rental posts
+  - All Users table: name, email/phone, role, status (active/blocked), block/unblock button
+  - All Posts tabs: Jobs and Rentals with delete button for each
+  - Listings Approval section: pending listings with Approve/Reject buttons
+- Backend: user blocking (blockUser, unblockUser, isUserBlocked)
+- Backend: listing approval status (pending/approved/rejected) on JobVacancy and RentalProperty
+- Backend: adminGetAllJobVacancies, adminGetAllRentals (admin-only full lists)
+- Backend: approveJobVacancy, rejectJobVacancy, approveRentalProperty, rejectRentalProperty
+- Backend: getUserCount, getJobVacancyCount, getRentalCount for stats
+- Backend: updateUserProfile(userId, name) for users to update their display name
+- Backend: profileImageUrl field on UserAccount (stored as Text URL)
+- Backend: imageUrl field on JobVacancyWithOwner and RentalWithOwner
 
 ### Modify
-- `LoginScreen`: add OTP login tab alongside existing password login
-- `backend.d.ts` + `backend.did.js`: add `loginWithOtp` declaration
-- `RegisterScreen`: ensure "User already exists" error is surfaced clearly (already handled, minor copy fix)
+- ProfilePage: add image upload UI (upload to blob-storage, save URL to backend)
+- JobsPage post form: add image upload field
+- RentalsPage post form: add image upload field
+- App.tsx: add "admindashboard" page route, link from ProfilePage admin menu
+- AdminWorkersPage: keep as-is (worker management), link to new AdminDashboard
+- ProfilePage: replace hardcoded "0" stats with real counts from backend
+- Blocked users: cannot login (backend login checks blocked status)
+- Open job vacancies shown to users only if approvalStatus is approved (or pending for backward compat with existing data)
 
 ### Remove
-- Nothing removed; existing password login stays as an option
+- Nothing removed
 
 ## Implementation Plan
-1. Add `loginWithOtp(phone, otp)` to Motoko backend — uses `verifyOtp` logic then looks up user by phone; returns `#ok({userId, role})` or `#err(message)`
-2. Add `loginWithOtp` to `backend.d.ts` and `backend.did.js` Candid IDL
-3. Update `LoginScreen` with a Password/OTP tab switcher:
-   - Password tab: existing form (unchanged)
-   - OTP tab: Step 1 (enter phone, send OTP) + Step 2 (enter OTP, verify and login)
-4. Wire error messages precisely for all auth failure cases
+
+1. Select blob-storage Caffeine component
+2. Regenerate Motoko backend with:
+   - UserAccount gains `blocked: Bool` and `profileImageUrl: Text` fields
+   - JobVacancy/RentalProperty gain `approvalStatus: Text` ("pending"/"approved"/"rejected") and `imageUrl: Text`
+   - New admin functions: blockUser, unblockUser, approveJobVacancy, rejectJobVacancy, approveRentalProperty, rejectRentalProperty, adminGetAllJobVacancies, adminGetAllRentals
+   - Stats queries: getUserCount, getJobVacancyCount, getRentalCount
+   - login() checks blocked status before returning session
+   - updateUserProfileData(userId, name, profileImageUrl)
+3. Frontend updates:
+   - New AdminDashboardPage component with stats + user management + post management + approvals
+   - ProfilePage: image upload via StorageClient (blob-storage), display uploaded image
+   - JobsPage: search/filter bar, image upload in post form
+   - RentalsPage: search/filter bar, image upload in post form
+   - App.tsx: add admindashboard route
+   - ProfilePage admin section: add link to admindashboard

@@ -3,8 +3,10 @@ import {
   BarChart3,
   Bell,
   Briefcase,
+  Camera,
   ChevronRight,
   ClipboardList,
+  LayoutDashboard,
   LogOut,
   MapPin,
   Settings,
@@ -12,13 +14,16 @@ import {
   Users,
 } from "lucide-react";
 import { motion } from "motion/react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { WorkerStatus } from "../backend.d";
+import { useActor } from "../hooks/useActor";
 import type { UserSession } from "../hooks/useWorkerQueries";
 import {
   useGetWorkerByUserId,
   useUpdateWorkerStatus,
 } from "../hooks/useWorkerQueries";
+import { uploadImageFile } from "../utils/imageUpload";
 
 type ProfileNav =
   | "jobboard"
@@ -27,6 +32,7 @@ type ProfileNav =
   | "reports"
   | "notifications"
   | "adminworkers"
+  | "admindashboard"
   | "settings"
   | "nearby";
 
@@ -92,6 +98,14 @@ const MENU_ITEMS: {
     subtitle: "Set worker status and block accounts",
     icon: ShieldCheck,
     color: "bg-red-100 text-red-600",
+    adminOnly: true,
+  },
+  {
+    id: "admindashboard",
+    label: "Admin Dashboard",
+    subtitle: "Users, posts, approvals and stats",
+    icon: LayoutDashboard,
+    color: "bg-rose-100 text-rose-600",
     adminOnly: true,
   },
   {
@@ -165,6 +179,7 @@ export default function ProfilePage({
   session,
   onLogout,
 }: ProfilePageProps) {
+  const { actor } = useActor();
   const isAdmin = session?.role === "admin";
   const isWorker = session?.role === "worker";
   const displayName = session?.name ?? "Guest User";
@@ -178,6 +193,57 @@ export default function ProfilePage({
     (item) => !item.adminOnly || isAdmin,
   );
 
+  const storageKey = `profile_img_${session?.userId ?? "0"}`;
+  const [profileImageUrl, setProfileImageUrl] = useState<string>(() => {
+    try {
+      return localStorage.getItem(storageKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+    setUploading(true);
+    try {
+      const url = await uploadImageFile(file, (pct) => {
+        console.log(`Upload progress: ${pct}%`);
+      });
+      setProfileImageUrl(url);
+      try {
+        localStorage.setItem(storageKey, url);
+      } catch {
+        // storage full - ignore
+      }
+      // Try to update via backend if function exists
+      if (actor && session) {
+        try {
+          await (actor as any).updateUserProfileData(
+            session.userId,
+            displayName,
+            url,
+          );
+        } catch {
+          // backend function may not exist yet
+        }
+      }
+      toast.success("Profile photo updated!");
+    } catch (err) {
+      console.error("Image upload failed:", err);
+      toast.error("Failed to upload image. Please try again.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   return (
     <div className="flex flex-col min-h-full pb-20">
       <div className="px-5 pt-6 pb-4">
@@ -187,9 +253,44 @@ export default function ProfilePage({
           className="flex flex-col items-center text-center py-6 px-4 worker-card"
           data-ocid="profile.card"
         >
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center mb-3">
-            <span className="text-3xl font-bold text-primary">{initials}</span>
+          {/* Avatar with upload */}
+          <div className="relative mb-3">
+            <div className="w-20 h-20 rounded-full overflow-hidden bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+              {profileImageUrl ? (
+                <img
+                  src={profileImageUrl}
+                  alt="Profile"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-3xl font-bold text-primary">
+                  {initials}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              data-ocid="profile.upload_button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center shadow-md hover:bg-primary/90 transition-colors"
+            >
+              {uploading ? (
+                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Camera className="w-3.5 h-3.5" />
+              )}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              data-ocid="profile.image.input"
+              onChange={handleImageSelect}
+            />
           </div>
+
           <h2 className="font-display text-lg font-semibold text-foreground">
             {displayName}
           </h2>
@@ -199,7 +300,13 @@ export default function ProfilePage({
           {session && (
             <div className="mt-1">
               <span
-                className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isAdmin ? "bg-red-100 text-red-600" : isWorker ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-600"}`}
+                className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                  isAdmin
+                    ? "bg-red-100 text-red-600"
+                    : isWorker
+                      ? "bg-green-100 text-green-700"
+                      : "bg-blue-100 text-blue-600"
+                }`}
               >
                 {isAdmin ? "Admin" : isWorker ? "Worker" : "User"}
               </span>
